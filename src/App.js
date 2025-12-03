@@ -417,8 +417,16 @@ function App() {
     );
   }
 
+  // GitHub Pages 배포를 위한 basename 설정
+  // 리포지토리 이름이 "mirimdomiTest"인 경우 "/mirimdomiTest"로 설정
+  // process.env.PUBLIC_URL은 빌드 시 자동으로 설정됨
+  const basename = process.env.PUBLIC_URL || '/mirimdomiTest';
+  
+  console.log('Router basename:', basename);
+  console.log('PUBLIC_URL:', process.env.PUBLIC_URL);
+  
   return (
-    <Router>
+    <Router basename={basename}>
       <div className="App">
         <Routes>
           {!isLoggedIn ? (

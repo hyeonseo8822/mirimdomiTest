@@ -2,6 +2,7 @@
   "name": "mirimdomi",
   "version": "0.1.0",
   "private": true,
+  "homepage": "https://hyeonseo8822.github.io/mirimdomiTest",
   "dependencies": {
     "@react-oauth/google": "^0.12.2",
     "@supabase/supabase-js": "^2.86.0",
@@ -25,7 +26,9 @@
     "dev": "concurrently \"npm run server\" \"npm start\"",
     "build": "react-scripts build",
     "test": "react-scripts test",
-    "eject": "react-scripts eject"
+    "eject": "react-scripts eject",
+    "predeploy": "npm run build && node scripts/copy-404.js",
+    "deploy": "gh-pages -d build"
   },
   "eslintConfig": {
     "extends": [
