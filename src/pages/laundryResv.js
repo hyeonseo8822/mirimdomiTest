@@ -425,17 +425,53 @@ function LaundryResv({ userInfo }) {
 
         console.log('✅ 예약 성공!');
 
+        // 알람 생성
+        const alarmMessage = `오늘 ${slot.timeSlot.label} 세탁 예약이 있어요!`;
+        const alarmDetail = `세탁 예약이 확인되었습니다.\n\n예약 시간: ${formattedDate} ${slot.timeSlot.label}\n세탁실: 1층 세탁실\n기계 번호: ${slot.machine}번\n\n세탁이 완료되면 알림을 드리겠습니다.`;
+
+        const alarmData = {
+          user_id: userIdString,
+          type: '세탁',
+          message: alarmMessage,
+          detail: alarmDetail,
+          time: '방금',
+          is_read: false,
+        };
+
+        console.log('알람 생성 시도:', alarmData);
+
+        const { data: alarmInsertData, error: alarmError } = await supabase
+          .from('alarm')
+          .insert([alarmData])
+          .select();
+
+        if (alarmError) {
+          console.error('❌ 알람 생성 실패:', alarmError);
+          console.error('에러 코드:', alarmError.code);
+          console.error('에러 메시지:', alarmError.message);
+          console.error('에러 상세:', JSON.stringify(alarmError, null, 2));
+          console.error('입력 데이터:', alarmData);
+          
+          // RLS 정책 오류인 경우
+          if (alarmError.code === '42501' || alarmError.message?.includes('policy') || alarmError.message?.includes('permission')) {
+            console.error('💡 RLS 정책 확인 필요 - alarm 테이블의 INSERT 정책을 확인해주세요.');
+          }
+          // 알람 생성 실패해도 예약은 성공한 것으로 처리
+        } else {
+          console.log('✅ 알람 생성 성공!', alarmInsertData);
+        }
+
         // 로컬 상태 업데이트
         setReservationSlots(currentSlots =>
           currentSlots.map(s =>
             s.id === slotId
               ? {
-                ...s,
-                status: 'reserved',
-                room: userInfo.room_number ? `${userInfo.room_number}호` : '호실 정보 없음',
-                name: userInfo.name || '이름 없음',
-                userId: userIdString, // 문자열로 저장
-              }
+                  ...s,
+                  status: 'reserved',
+                  room: userInfo.room_number ? `${userInfo.room_number}호` : '호실 정보 없음',
+                  name: userInfo.name || '이름 없음',
+                  userId: userIdString, // 문자열로 저장
+                }
               : s
           )
         );

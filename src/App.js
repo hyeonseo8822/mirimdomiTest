@@ -20,10 +20,41 @@ function App() {
   const [userInfo, setUserInfo] = useState(null);
   const [isLoading, setIsLoading] = useState(true); // 초기 로딩 상태 추가
 
+  // localStorage에서 사용자 정보 복원
+  const restoreUserInfoFromStorage = () => {
+    try {
+      const storedUserInfo = localStorage.getItem('userInfo');
+      if (storedUserInfo) {
+        const parsed = JSON.parse(storedUserInfo);
+        setUserInfo(parsed);
+        setIsNewUser(!parsed.infocomplete);
+        setIsLoggedIn(true);
+        return parsed;
+      }
+    } catch (error) {
+      console.error('localStorage에서 사용자 정보 복원 실패:', error);
+    }
+    return null;
+  };
+
+  // 사용자 정보를 localStorage에 저장
+  const saveUserInfoToStorage = (userInfo) => {
+    try {
+      if (userInfo) {
+        localStorage.setItem('userInfo', JSON.stringify(userInfo));
+      } else {
+        localStorage.removeItem('userInfo');
+      }
+    } catch (error) {
+      console.error('localStorage에 사용자 정보 저장 실패:', error);
+    }
+  };
+
   // Supabase에서 사용자 프로필 정보 가져오기
   const fetchUserProfile = async (googleUserId) => {
     if (!googleUserId) {
       setUserInfo(null);
+      saveUserInfoToStorage(null);
       return;
     }
     try {
@@ -39,16 +70,21 @@ function App() {
 
       if (data) {
         setUserInfo(data);
+        saveUserInfoToStorage(data); // localStorage에 저장
         setIsNewUser(!data.infocomplete); // 'infocomplete' 컬럼으로 새 사용자인지 판단
       } else {
         // Supabase에 정보가 없으면 새로운 사용자
-        setUserInfo(prev => ({ ...prev, id: googleUserId })); // Google ID만 임시로 설정
+        const tempUserInfo = { id: googleUserId };
+        setUserInfo(tempUserInfo);
+        saveUserInfoToStorage(tempUserInfo); // localStorage에 저장
         setIsNewUser(true);
       }
     } catch (error) {
       console.error('사용자 프로필 불러오기 실패:', error);
       // 에러 발생 시에도 새 사용자로 처리
-      setUserInfo(prev => ({ ...prev, id: googleUserId }));
+      const tempUserInfo = { id: googleUserId };
+      setUserInfo(tempUserInfo);
+      saveUserInfoToStorage(tempUserInfo); // localStorage에 저장
       setIsNewUser(true);
     }
   };
@@ -97,6 +133,28 @@ function App() {
         }
 
         if (userIdToFetch) {
+          // 먼저 프로필 확인
+          const { data: existingUser } = await supabase
+            .from('users')
+            .select('*')
+            .eq('id', userIdToFetch)
+            .single();
+
+          // 레코드가 없고 email이 있으면 초기 레코드 생성 (email 포함)
+          if (!existingUser && session.user.email) {
+            const { error: insertError } = await supabase
+              .from('users')
+              .insert({
+                id: userIdToFetch,
+                email: session.user.email,
+                name: session.user.user_metadata?.name || session.user.email?.split('@')[0] || '사용자',
+              });
+
+            if (insertError && insertError.code !== '23505') { // 23505는 중복 키 오류 (이미 생성된 경우)
+              console.warn('초기 사용자 레코드 생성 실패:', insertError);
+            }
+          }
+
           await fetchUserProfile(userIdToFetch);
         } else {
           console.warn("Google User ID를 찾을 수 없습니다.");
@@ -130,6 +188,12 @@ function App() {
     // 초기 세션 확인 및 인증 리스너 설정
     const initializeAuth = async () => {
       try {
+        // 먼저 localStorage에서 사용자 정보 복원 (빠른 UI 표시를 위해)
+        const restoredUserInfo = restoreUserInfoFromStorage();
+        if (restoredUserInfo) {
+          console.log('localStorage에서 사용자 정보 복원됨');
+        }
+
         // Supabase 인증 상태 변경 리스너 추가
         const { data: listenerData } = supabase.auth.onAuthStateChange(
           async (event, session) => {
@@ -145,6 +209,7 @@ function App() {
               setIsLoading(false);
               localStorage.removeItem('googleAccessToken');
               localStorage.removeItem('googleUserId');
+              localStorage.removeItem('userInfo');
               return;
             }
 
@@ -210,10 +275,25 @@ function App() {
         if (session && session.user) {
           await loadUserProfile(session);
         } else {
-          // 세션이 없으면 로그아웃 상태
-          setIsLoggedIn(false);
-          setUserInfo(null);
-          setIsLoading(false);
+          // 세션이 없으면 localStorage에서 복원 시도
+          const restoredUserInfo = restoreUserInfoFromStorage();
+          if (restoredUserInfo) {
+            // localStorage에 정보가 있으면 로그인 상태 유지
+            setIsLoggedIn(true);
+            setIsLoading(false);
+            // 백그라운드에서 최신 정보 가져오기 시도
+            const googleUserId = localStorage.getItem('googleUserId');
+            if (googleUserId) {
+              fetchUserProfile(googleUserId).catch(err => {
+                console.error('백그라운드 사용자 정보 로드 실패:', err);
+              });
+            }
+          } else {
+            // 세션이 없고 localStorage에도 없으면 로그아웃 상태
+            setIsLoggedIn(false);
+            setUserInfo(null);
+            setIsLoading(false);
+          }
         }
       } catch (error) {
         console.error('인증 초기화 중 오류:', error);
@@ -266,23 +346,39 @@ function App() {
     }
     
     try {
+      // 현재 세션에서 email 가져오기
+      const { data: { session } } = await supabase.auth.getSession();
+      const userEmail = session?.user?.email || userInfo?.email;
+
+      // upsert 사용: 레코드가 있으면 업데이트, 없으면 삽입
+      const upsertData = {
+        id: userInfo.id,
+        name: formData.name,
+        student_id: formData.studentId,
+        room_number: formData.roomNumber,
+        address: formData.address,
+        infocomplete: true // 사용자 정보 입력 완료
+      };
+
+      // email이 있으면 포함
+      if (userEmail) {
+        upsertData.email = userEmail;
+      }
+
       const { error } = await supabase
         .from('users')
-        .update({
-          name: formData.name,
-          student_id: formData.studentId,
-          room_number: formData.roomNumber,
-          address: formData.address,
-          infocomplete: true // 사용자 정보 입력 완료
-        })
-        .eq('id', userInfo.id);
+        .upsert(upsertData, {
+          onConflict: 'id' // id가 중복되면 업데이트
+        });
 
       if (error) throw error;
 
       await fetchUserProfile(userInfo.id); // 업데이트 후 최신 정보 다시 가져오기
     } catch (error) {
-      console.error('사용자 정보 업데이트 실패:', error);
-      alert('사용자 정보 업데이트 중 오류가 발생했습니다: ' + error.message);
+      console.error('사용자 정보 저장 실패:', error);
+      console.error('에러 코드:', error.code);
+      console.error('에러 메시지:', error.message);
+      alert('사용자 정보 저장 중 오류가 발생했습니다: ' + error.message);
     }
   };
 
@@ -291,6 +387,7 @@ function App() {
     await supabase.auth.signOut();
     localStorage.removeItem('googleAccessToken');
     localStorage.removeItem('googleUserId');
+    localStorage.removeItem('userInfo');
     setIsLoggedIn(false);
     setIsNewUser(false);
     setUserInfo(null);
@@ -301,6 +398,7 @@ function App() {
     // 즉시 로컬 상태 업데이트 (옵셔널)
     if (updatedUserInfo) {
       setUserInfo(updatedUserInfo);
+      saveUserInfoToStorage(updatedUserInfo); // localStorage에 저장
     }
     
     // 서버에서 최신 정보 가져오기
@@ -343,7 +441,7 @@ function App() {
                 <Route path="laundry" element={<Laundry userInfo={userInfo} />} />
                 <Route path="profile" element={<Profile userInfo={userInfo} onUserProfileUpdate={handleUserProfileUpdate} />} />
                 <Route path="notice" element={<Notice />} />
-                <Route path="alarm" element={<Alarm />} />
+                <Route path="alarm" element={<Alarm userInfo={userInfo} />} />
               </Route>
               <Route path="*" element={<Navigate to="/main" replace />} />
             </>

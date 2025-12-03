@@ -36,22 +36,35 @@ function UserInfoForm({ userInfo, onSubmit, onCancel }) {
       return;
     }
 
+    // upsert 사용: 레코드가 있으면 업데이트, 없으면 삽입
+    const upsertData = {
+      id: userInfo.id,
+      name: formData.name,
+      student_id: formData.studentId,
+      room_number: formData.roomNumber,
+      address: formData.address,
+      infocomplete: true, // 사용자 정보 입력 완료
+    };
+
+    // email이 있으면 포함 (userInfo에 email이 있거나, 세션에서 가져올 수 있음)
+    if (userInfo.email) {
+      upsertData.email = userInfo.email;
+    }
+
     const { data, error } = await supabase
       .from('users')
-      .update({
-        name: formData.name,
-        student_id: formData.studentId,
-        room_number: formData.roomNumber,
-        address: formData.address,
+      .upsert(upsertData, {
+        onConflict: 'id' // id가 중복되면 업데이트
       })
-      .eq('id', userInfo.id)
       .select();
 
     if (error) {
-      console.error('Supabase 데이터 업데이트 실패:', error);
-      alert('데이터베이스에 사용자 정보를 업데이트하는 중 오류가 발생했습니다.');
+      console.error('Supabase 데이터 저장 실패:', error);
+      console.error('에러 코드:', error.code);
+      console.error('에러 메시지:', error.message);
+      alert('데이터베이스에 사용자 정보를 저장하는 중 오류가 발생했습니다: ' + error.message);
     } else {
-      console.log('Supabase에 사용자 정보 업데이트 완료:', data);
+      console.log('Supabase에 사용자 정보 저장 완료:', data);
       onSubmit(formData);
     }
   };

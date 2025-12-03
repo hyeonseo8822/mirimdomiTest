@@ -1,13 +1,16 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import './css/alarm.css';
+import { supabase } from '../supabaseClient';
 
 // 로컬 이미지 경로
 const arrowRightIcon = "/img/arrow-right.svg";
 
-function Alarm() {
+function Alarm({ userInfo }) {
   const navigate = useNavigate();
   const [selectedAlarm, setSelectedAlarm] = useState(null);
+  const [alarms, setAlarms] = useState([]);
+  const [alarmsLoading, setAlarmsLoading] = useState(true);
 
   // 현재 날짜 포맷팅
   const getCurrentDate = () => {
@@ -18,65 +21,83 @@ function Alarm() {
     return `${year}.${month}.${day}`;
   };
 
-  // 알람 데이터
-  const alarms = [
-    { 
-      id: 1, 
-      type: '세탁', 
-      message: '오늘 9:20 세탁 예약이 있어요!', 
-      time: '방금',
-      detail: '세탁 예약이 확인되었습니다.\n\n예약 시간: 오늘 오전 9:20\n세탁실: 1층 세탁실\n기계 번호: 3번\n\n세탁이 완료되면 알림을 드리겠습니다.'
-    },
-    { 
-      id: 2, 
-      type: '세탁', 
-      message: '오늘 9:20 세탁 예약이 있어요!', 
-      time: '방금',
-      detail: '세탁 예약이 확인되었습니다.\n\n예약 시간: 오늘 오전 9:20\n세탁실: 1층 세탁실\n기계 번호: 3번\n\n세탁이 완료되면 알림을 드리겠습니다.'
-    },
-    { 
-      id: 3, 
-      type: '세탁', 
-      message: '오늘 9:20 세탁 예약이 있어요!', 
-      time: '5분 전',
-      detail: '세탁 예약이 확인되었습니다.\n\n예약 시간: 오늘 오전 9:20\n세탁실: 1층 세탁실\n기계 번호: 3번\n\n세탁이 완료되면 알림을 드리겠습니다.'
-    },
-    { 
-      id: 4, 
-      type: '세탁', 
-      message: '오늘 9:20 세탁 예약이 있어요!', 
-      time: '10분 전',
-      detail: '세탁 예약이 확인되었습니다.\n\n예약 시간: 오늘 오전 9:20\n세탁실: 1층 세탁실\n기계 번호: 3번\n\n세탁이 완료되면 알림을 드리겠습니다.'
-    },
-    { 
-      id: 5, 
-      type: '세탁', 
-      message: '오늘 9:20 세탁 예약이 있어요!', 
-      time: '1시간 전',
-      detail: '세탁 예약이 확인되었습니다.\n\n예약 시간: 오늘 오전 9:20\n세탁실: 1층 세탁실\n기계 번호: 3번\n\n세탁이 완료되면 알림을 드리겠습니다.'
-    },
-    { 
-      id: 6, 
-      type: '세탁', 
-      message: '오늘 9:20 세탁 예약이 있어요!', 
-      time: '2시간 전',
-      detail: '세탁 예약이 확인되었습니다.\n\n예약 시간: 오늘 오전 9:20\n세탁실: 1층 세탁실\n기계 번호: 3번\n\n세탁이 완료되면 알림을 드리겠습니다.'
-    },
-    { 
-      id: 7, 
-      type: '세탁', 
-      message: '오늘 9:20 세탁 예약이 있어요!', 
-      time: '어제',
-      detail: '세탁 예약이 확인되었습니다.\n\n예약 시간: 오늘 오전 9:20\n세탁실: 1층 세탁실\n기계 번호: 3번\n\n세탁이 완료되면 알림을 드리겠습니다.'
-    },
-    { 
-      id: 8, 
-      type: '세탁', 
-      message: '오늘 9:20 세탁 예약이 있어요!', 
-      time: '어제',
-      detail: '세탁 예약이 확인되었습니다.\n\n예약 시간: 오늘 오전 9:20\n세탁실: 1층 세탁실\n기계 번호: 3번\n\n세탁이 완료되면 알림을 드리겠습니다.'
-    },
-  ];
+  // 날짜 포맷팅 함수 (created_at을 YYYY.MM.DD 형식으로 변환)
+  const formatDate = (dateString) => {
+    if (!dateString) return '';
+    const date = new Date(dateString);
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}.${month}.${day}`;
+  };
+
+  // 상대 시간 계산 함수 (예: '방금', '5분 전', '1시간 전' 등)
+  const getRelativeTime = (createdAt) => {
+    if (!createdAt) return '방금';
+    
+    const now = new Date();
+    const created = new Date(createdAt);
+    const diffMs = now - created;
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+
+    if (diffMins < 1) return '방금';
+    if (diffMins < 60) return `${diffMins}분 전`;
+    if (diffHours < 24) return `${diffHours}시간 전`;
+    if (diffDays === 1) return '어제';
+    if (diffDays < 7) return `${diffDays}일 전`;
+    return formatDate(createdAt);
+  };
+
+  // 알람 데이터 가져오기
+  const fetchAlarms = async () => {
+    setAlarmsLoading(true);
+    try {
+      if (!userInfo?.id) {
+        setAlarms([]);
+        setAlarmsLoading(false);
+        return;
+      }
+
+      const userIdString = String(userInfo.id);
+
+      const { data, error } = await supabase
+        .from('alarm')
+        .select('*')
+        .eq('user_id', userIdString)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('알람 데이터 불러오기 실패:', error);
+        setAlarms([]);
+        return;
+      }
+
+      // 데이터 포맷 변환
+      const formattedAlarms = (data || []).map(alarm => ({
+        id: alarm.id,
+        type: alarm.type || '알림',
+        message: alarm.message || '',
+        time: alarm.time || getRelativeTime(alarm.created_at),
+        detail: alarm.detail || '',
+        created_at: alarm.created_at,
+        is_read: alarm.is_read || false,
+      }));
+
+      setAlarms(formattedAlarms);
+    } catch (error) {
+      console.error('알람 가져오기 중 오류:', error);
+      setAlarms([]);
+    } finally {
+      setAlarmsLoading(false);
+    }
+  };
+
+  // 컴포넌트 마운트 시 알람 가져오기
+  useEffect(() => {
+    fetchAlarms();
+  }, [userInfo]);
 
   const handleAlarmClick = (alarm) => {
     setSelectedAlarm(alarm);
@@ -96,19 +117,29 @@ function Alarm() {
 
       <div className="alarm-list-container">
         <div className="alarm-list">
-          {alarms.map((alarm) => (
-            <div 
-              key={alarm.id} 
-              className="alarm-item"
-              onClick={() => handleAlarmClick(alarm)}
-            >
-              <div className="alarm-content">
-                <span className="alarm-type">{alarm.type}</span>
-                <p className="alarm-message">{alarm.message}</p>
-              </div>
-              <p className="alarm-time">{alarm.time}</p>
+          {alarmsLoading ? (
+            <div style={{ padding: '20px', textAlign: 'center', fontSize: '14px', color: '#999' }}>
+              알람을 불러오는 중...
             </div>
-          ))}
+          ) : alarms.length === 0 ? (
+            <div style={{ padding: '20px', textAlign: 'center', fontSize: '14px', color: '#999' }}>
+              알람이 없습니다.
+            </div>
+          ) : (
+            alarms.map((alarm) => (
+              <div 
+                key={alarm.id} 
+                className="alarm-item"
+                onClick={() => handleAlarmClick(alarm)}
+              >
+                <div className="alarm-content">
+                  <span className="alarm-type">{alarm.type}</span>
+                  <p className="alarm-message">{alarm.message}</p>
+                </div>
+                <p className="alarm-time">{alarm.time}</p>
+              </div>
+            ))
+          )}
         </div>
       </div>
 

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import './css/main.css';
 import { supabase } from '../supabaseClient';
 
@@ -8,13 +8,9 @@ const arrowRightIcon = "/img/arrow-right.svg";
 
 function Main({ userInfo }) {
   const navigate = useNavigate();
+  const location = useLocation();
   const [mealTab, setMealTab] = useState('조식');
   const [currentDay, setCurrentDay] = useState('화요일');
-  
-  // userInfo가 업데이트되면 다시 렌더링
-  useEffect(() => {
-    // userInfo 변경 시 자동으로 리렌더링됨
-  }, [userInfo]);
 
   // 현재 날짜 포맷팅
   const getCurrentDate = () => {
@@ -71,12 +67,14 @@ function Main({ userInfo }) {
         console.error('공지사항 불러오기 실패:', error);
         console.error('에러 상세:', JSON.stringify(error, null, 2));
         setNotices([]);
+        setNoticesLoading(false);
         return;
       }
 
       if (!data) {
         console.warn('데이터가 null입니다 (main).');
         setNotices([]);
+        setNoticesLoading(false);
         return;
       }
 
@@ -109,18 +107,109 @@ function Main({ userInfo }) {
     }
   };
 
-  // 컴포넌트 마운트 시 공지사항 가져오기
+  // 컴포넌트 마운트 시 및 페이지 포커스 시 공지사항 가져오기
   useEffect(() => {
     fetchNotices();
-  }, []);
+  }, [location.pathname]); // location.pathname이 변경될 때마다 다시 가져오기
 
   // 알람 데이터
-  const alarms = [
-    { id: 1, type: '세탁', message: '오늘 9:20 세탁 예약이 있어요!', time: '방금' },
-    { id: 2, type: '세탁', message: '오늘 9:20 세탁 예약이 있어요!', time: '방금' },
-    { id: 3, type: '세탁', message: '오늘 9:20 세탁 예약이 있어요!', time: '방금' },
-    { id: 4, type: '세탁', message: '오늘 9:20 세탁 예약이 있어요!', time: '방금' },
-  ];
+  const [alarms, setAlarms] = useState([]);
+  const [alarmsLoading, setAlarmsLoading] = useState(true);
+
+  // 상대 시간 계산 함수 (예: '방금', '5분 전', '1시간 전' 등)
+  const getRelativeTime = (createdAt) => {
+    if (!createdAt) return '방금';
+    
+    const now = new Date();
+    const created = new Date(createdAt);
+    const diffMs = now - created;
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+
+    if (diffMins < 1) return '방금';
+    if (diffMins < 60) return `${diffMins}분 전`;
+    if (diffHours < 24) return `${diffHours}시간 전`;
+    if (diffDays < 7) return `${diffDays}일 전`;
+    return formatDate(createdAt);
+  };
+
+  // 알람 데이터 가져오기
+  const fetchAlarms = async () => {
+    setAlarmsLoading(true);
+    try {
+      if (!userInfo?.id) {
+        setAlarms([]);
+        setAlarmsLoading(false);
+        return;
+      }
+
+      const userIdString = String(userInfo.id);
+
+      const { data, error } = await supabase
+        .from('alarm')
+        .select('*')
+        .eq('user_id', userIdString)
+        .order('created_at', { ascending: false })
+        .limit(4); // 최신 4개만 가져오기
+
+      if (error) {
+        console.error('알람 데이터 불러오기 실패:', error);
+        setAlarms([]);
+        setAlarmsLoading(false);
+        return;
+      }
+
+      // 데이터 포맷 변환
+      const formattedAlarms = (data || []).map(alarm => ({
+        id: alarm.id,
+        type: alarm.type || '알림',
+        message: alarm.message || '',
+        time: alarm.time || getRelativeTime(alarm.created_at),
+        detail: alarm.detail || '',
+        created_at: alarm.created_at,
+        is_read: alarm.is_read || false,
+      }));
+
+      setAlarms(formattedAlarms);
+    } catch (error) {
+      console.error('알람 가져오기 중 오류:', error);
+      setAlarms([]);
+    } finally {
+      setAlarmsLoading(false);
+    }
+  };
+
+  // 컴포넌트 마운트 시 및 페이지 포커스 시 알람 가져오기 및 실시간 구독
+  useEffect(() => {
+    fetchAlarms();
+
+    // Supabase Realtime 구독
+    if (userInfo?.id) {
+      const userIdString = String(userInfo.id);
+      
+      const subscription = supabase
+        .channel('alarm_changes')
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'alarm',
+            filter: `user_id=eq.${userIdString}`,
+          },
+          (payload) => {
+            console.log('알람 변경 감지:', payload);
+            fetchAlarms(); // 변경 시 다시 가져오기
+          }
+        )
+        .subscribe();
+
+      return () => {
+        subscription.unsubscribe();
+      };
+    }
+  }, [userInfo, location.pathname]); // location.pathname 추가
 
   // 커뮤니티 데이터
   const [communityPosts, setCommunityPosts] = useState([]);
@@ -139,6 +228,7 @@ function Main({ userInfo }) {
       if (error) {
         console.error('커뮤니티 게시글 불러오기 실패:', error);
         setCommunityPosts([]);
+        setCommunityLoading(false);
       } else {
         // 데이터 포맷 변환 (main.js에서 사용하는 형식으로)
         const formattedPosts = (data || []).map(post => ({
@@ -161,10 +251,10 @@ function Main({ userInfo }) {
     }
   };
 
-  // 컴포넌트 마운트 시 커뮤니티 게시글 가져오기
+  // 컴포넌트 마운트 시 및 페이지 포커스 시 커뮤니티 게시글 가져오기
   useEffect(() => {
     fetchCommunityPosts();
-  }, []);
+  }, [location.pathname]); // location.pathname이 변경될 때마다 다시 가져오기
 
   // 시간표 데이터
   const [timetable, setTimetable] = useState([]);
@@ -207,8 +297,20 @@ const fetchTimetable = async (grade, classNum, date) => {
     // 날짜 : YYYYMMDD
     const dateStr = date.replace(/\./g, '').replace(/\s/g, '');
 
+    const apiKey = process.env.REACT_APP_NEIS_API_KEY || 'f5d5771e4c464ba287816eb498ff3999';
+    
+    if (!apiKey) {
+      console.error('NEIS API 키가 설정되지 않았습니다.');
+      setTimetableError('API 키가 설정되지 않았습니다.');
+      setTimetable(getDummyTimetable(grade, classNum));
+      setTimetableLoading(false);
+      return;
+    }
+
+    console.log('시간표 API 키 사용:', apiKey.substring(0, 10) + '...');
+
     const params = new URLSearchParams({
-      KEY: 'f5d5771e4c464ba287816eb498ff3999',      // 🔥 반드시 넣어야 함
+      KEY: apiKey,
       Type: 'json',
       pIndex: '1',
       pSize: '100',
@@ -331,7 +433,16 @@ const fetchTimetable = async (grade, classNum, date) => {
 
   // NEIS API 직접 호출 (급식) - 사용자 제공 형식
   const getMealInfo = async (dateData) => {
-    const API_KEY = "90de860d4ab54f7eb75640bf431149a4";
+    const API_KEY = process.env.REACT_APP_NEIS_API_KEY || 'f5d5771e4c464ba287816eb498ff3999';
+    
+    if (!API_KEY) {
+      console.error('NEIS API 키가 설정되지 않았습니다.');
+      setMealError('API 키가 설정되지 않았습니다.');
+      return;
+    }
+
+    console.log('급식 API 키 사용:', API_KEY.substring(0, 10) + '...');
+    
     const URL = "https://open.neis.go.kr/hub/mealServiceDietInfo";
     const ATPT_OFCDC_SC_CODE = "B10";   // 서울 특별시 교육청
     const SD_SCHUL_CODE = "7011569";
@@ -525,15 +636,21 @@ const fetchTimetable = async (grade, classNum, date) => {
             <img src={arrowRightIcon} alt="더보기" className="arrow-icon" />
           </div>
           <div className="alarm-list">
-            {alarms.map((alarm) => (
-              <div key={alarm.id} className="alarm-item">
-                <div className="alarm-content">
-                  <span className="alarm-type">{alarm.type}</span>
-                  <p className="alarm-message">{alarm.message}</p>
+            {alarmsLoading ? (
+              <div style={{ padding: '10px', textAlign: 'center', fontSize: '14px' }}>로딩 중...</div>
+            ) : alarms.length === 0 ? (
+              <div style={{ padding: '10px', textAlign: 'center', fontSize: '14px' }}>알람이 없습니다.</div>
+            ) : (
+              alarms.map((alarm) => (
+                <div key={alarm.id} className="alarm-item">
+                  <div className="alarm-content">
+                    <span className="alarm-type">{alarm.type}</span>
+                    <p className="alarm-message">{alarm.message}</p>
+                  </div>
+                  <p className="alarm-time">{alarm.time}</p>
                 </div>
-                <p className="alarm-time">{alarm.time}</p>
-              </div>
-            ))}
+              ))
+            )}
           </div>
         </div>
 

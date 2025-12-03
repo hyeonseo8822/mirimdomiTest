@@ -79,7 +79,9 @@ function ProfileDetail({ userInfo, onUserInfoUpdate, onUserProfileUpdate }) {
         .from('avatars')
         .getPublicUrl(filePath);
 
-      const publicUrl = publicUrl.publicUrl;
+      const publicUrl = publicUrlData.publicUrl;
+
+      console.log('프로필 이미지 URL:', publicUrl);
 
       // users 테이블의 profile_image 컬럼 업데이트
       const { error: updateError } = await supabase
@@ -87,7 +89,12 @@ function ProfileDetail({ userInfo, onUserInfoUpdate, onUserProfileUpdate }) {
         .update({ profile_image: publicUrl })
         .eq('id', userInfo.id);
 
-      if (updateError) throw updateError;
+      if (updateError) {
+        console.error('프로필 이미지 업데이트 오류:', updateError);
+        console.error('에러 코드:', updateError.code);
+        console.error('에러 메시지:', updateError.message);
+        throw updateError;
+      }
 
       setProfileImage(publicUrl);
       
@@ -99,7 +106,16 @@ function ProfileDetail({ userInfo, onUserInfoUpdate, onUserProfileUpdate }) {
       alert("프로필 이미지가 성공적으로 업데이트되었습니다.");
     } catch (error) {
       console.error('프로필 이미지 업데이트 실패:', error);
-      alert('프로필 이미지 업데이트 중 오류가 발생했습니다: ' + error.message);
+      console.error('에러 코드:', error.code);
+      console.error('에러 메시지:', error.message);
+      console.error('에러 상세:', JSON.stringify(error, null, 2));
+      
+      // RLS 정책 오류인 경우
+      if (error.code === '42501' || error.message?.includes('policy') || error.message?.includes('permission')) {
+        alert('프로필 이미지 업데이트 중 권한 오류가 발생했습니다.\n\nSupabase에서 users 테이블의 UPDATE 정책을 확인해주세요.\n\nSQL: CREATE POLICY "Authenticated users can update profiles" ON users FOR UPDATE USING (auth.role() = \'authenticated\');');
+      } else {
+        alert('프로필 이미지 업데이트 중 오류가 발생했습니다: ' + error.message);
+      }
     }
   };
 
