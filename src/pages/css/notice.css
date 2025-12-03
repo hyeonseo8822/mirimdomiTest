@@ -1,0 +1,276 @@
+@import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css');
+
+.notice {
+  background-color: #fffdef;
+  min-height: 100vh;
+  font-family: 'Pretendard', sans-serif;
+  position: relative;
+  width: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  height: 100vh;
+}
+
+/* 전체 페이지 스크롤바 스타일링 */
+.notice::-webkit-scrollbar {
+  width: 6px;
+}
+
+.notice::-webkit-scrollbar-track {
+  background: #f5f5f5;
+  border-radius: 10px;
+}
+
+.notice::-webkit-scrollbar-thumb {
+  background: #e0e0e0;
+  border-radius: 10px;
+}
+
+.notice::-webkit-scrollbar-thumb:hover {
+  background: #bdbdbd;
+}
+
+.notice-header {
+  position: absolute;
+  left: 47px;
+  top: 64px;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  z-index: 1;
+}
+
+.back-button {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.back-button:hover {
+  opacity: 0.7;
+}
+
+.back-icon {
+  width: 14px;
+  height: 12px;
+  object-fit: contain;
+  transform: rotate(270deg);
+}
+
+.notice-header-content {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.notice-header .notice-title {
+  font-family: 'Pretendard', sans-serif;
+  font-weight: 600;
+  font-size: 28px;
+  line-height: 1.2;
+  letter-spacing: -1.12px;
+  color: #212121;
+  margin: 0;
+}
+
+.notice-date {
+  font-family: 'Pretendard', sans-serif;
+  font-weight: 400;
+  font-size: 22px;
+  line-height: 1.2;
+  letter-spacing: -0.88px;
+  color: #616161;
+  margin: 0;
+}
+
+.notice-list-container {
+  position: absolute;
+  left: 47px;
+  top: 176px;
+  width: 465px;
+  max-width: calc(100% - 94px);
+}
+
+.notice-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.notice-item {
+  background-color: #fff;
+  border: 1px solid #eeeeee;
+  border-radius: 12px;
+  padding: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.notice-item:hover {
+  background-color: #f5f5f5;
+}
+
+.notice-content {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.notice-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 98px;
+  background-color: #ff3b30;
+  flex-shrink: 0;
+}
+
+.notice-title-text {
+  font-family: 'Pretendard', sans-serif;
+  font-weight: 400;
+  font-size: 16px;
+  line-height: 1.4;
+  letter-spacing: -0.32px;
+  color: #212121;
+  margin: 0;
+}
+
+.notice-date-text {
+  font-family: 'Pretendard', sans-serif;
+  font-weight: 400;
+  font-size: 14px;
+  line-height: 1.4;
+  letter-spacing: -0.14px;
+  color: #616161;
+  margin: 0;
+}
+
+/* 공지사항 상세 */
+.notice-detail-container {
+  position: absolute;
+  left: calc(47px + 465px + 34px);
+  top: 176px;
+  background-color: #fff;
+  border: 1px solid #e0e0e0;
+  border-radius: 20px;
+  padding: 30px 40px;
+  width: 900px;
+  max-width: calc(100% - 47px - 465px - 34px - 47px);
+  height: 877px;
+  display: flex;
+  flex-direction: column;
+  gap: 30px;
+  overflow-y: auto;
+  box-sizing: border-box;
+}
+
+.notice-detail-header {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.notice-detail-title-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.notice-detail-title-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  width: 100%;
+}
+
+.notice-detail-title {
+  font-family: 'Pretendard', sans-serif;
+  font-weight: 500;
+  font-size: 24px;
+  line-height: 1.2;
+  letter-spacing: -0.96px;
+  color: #424242;
+  margin: 0;
+  flex: 1;
+}
+
+.notice-detail-date {
+  font-family: 'Pretendard', sans-serif;
+  font-weight: 400;
+  font-size: 16px;
+  line-height: 1.4;
+  letter-spacing: -0.32px;
+  color: #616161;
+  margin: 0;
+  margin-left: 20px;
+}
+
+.notice-detail-content {
+  background-color: #fffffb;
+  border: 1px solid #eeeeee;
+  border-radius: 16px;
+  padding: 24px;
+}
+
+.notice-detail-content p {
+  font-family: 'Pretendard', sans-serif;
+  font-weight: 500;
+  font-size: 18px;
+  line-height: 1.8;
+  letter-spacing: -0.72px;
+  color: #616161;
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+@media (max-width: 1600px) {
+  .notice-header {
+    left: calc(296px + 23px);
+  }
+  
+  .notice-list-container {
+    left: calc(296px + 23px);
+    width: calc(100% - 296px - 69px);
+    max-width: 465px;
+  }
+  
+  .notice-detail-container {
+    left: calc(296px + 23px + 465px + 34px);
+    width: calc(100% - 296px - 23px - 465px - 34px - 46px);
+    max-width: 900px;
+  }
+}
+
+@media (max-width: 1200px) {
+  .notice-header {
+    position: static;
+    margin: 64px 0 16px 20px;
+  }
+  
+  .notice-list-container {
+    position: static;
+    width: 100%;
+    max-width: 100%;
+    margin: 20px;
+    padding: 0;
+  }
+  
+  .notice-detail-container {
+    position: static;
+    width: 100%;
+    margin: 20px;
+    height: auto;
+    max-width: 100%;
+  }
+}
+

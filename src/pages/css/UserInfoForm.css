@@ -1,0 +1,337 @@
+.user-info-container {
+  background-color: #fefffe;
+  width: 100%;
+  min-height: 100vh; /* 고정 높이가 아니라 화면 전체 기준 */
+  position: relative;
+  display: flex;
+  justify-content: center;
+  padding-top: 80px;
+}
+
+.user-info-content {
+  position: static; /* absolute 제거 */
+  transform: none; /* 제거 */
+  width: 100%;
+  max-width: 911px;
+  display: flex;
+  flex-direction: column;
+  gap: 120px;
+  padding: 0 20px;
+  box-sizing: border-box;
+}
+.form-section {
+  display: flex;
+  flex-direction: column;
+  gap: 40px;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.form-label {
+  font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+  font-weight: 600;
+  font-size: 24px;
+  line-height: 1.2;
+  color: #000000;
+  letter-spacing: -0.96px;
+}
+
+.input-wrapper {
+  background-color: #fefffe;
+  border: 1px solid #e0e0e0;
+  border-radius: 12px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 22px 25px;
+  width: 100%;
+  transition: all 0.3s ease;
+  position: relative;
+}
+
+.input-wrapper.filled {
+  background-color: #fefffe;
+  border: 1px solid #e0e0e0;
+}
+
+.input-wrapper.focused {
+  background-color: #fffdef;
+  border: 1px solid #e6d057;
+}
+
+.input-wrapper.empty {
+  background-color: #eeeeee;
+  border: 1px solid #eeeeee;
+}
+
+.cursor {
+  background-color: #ccb94e;
+  height: 30px;
+  width: 2px;
+  border-radius: 500px;
+  animation: blink 1s infinite;
+  position: absolute;
+  pointer-events: none;
+}
+
+@keyframes blink {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0; }
+}
+
+.form-input {
+  font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+  font-weight: 500;
+  font-size: 22px;
+  line-height: 1.2;
+  color: #424242;
+  letter-spacing: -0.88px;
+  border: none;
+  outline: none;
+  background: transparent;
+  flex: 1;
+  width: 100%;
+}
+
+.input-wrapper.focused .form-input {
+  caret-color: transparent;
+}
+
+.form-input::placeholder {
+  color: #9e9e9e;
+}
+
+.input-wrapper.empty .form-input {
+  color: #9e9e9e;
+}
+
+.input-icon {
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.input-icon img {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.input-icon svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+
+.address-row {
+  display: flex;
+  gap: 19px;
+  align-items: flex-start;
+}
+
+.address-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.address-search-button {
+  background-color: #fefffe;
+  border: 1px solid #bfad49;
+  border-radius: 12px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 30px;
+  min-width: 136px;
+  flex-shrink: 0;
+  cursor: pointer;
+  font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+  font-weight: 500;
+  font-size: 22px;
+  line-height: 1.2;
+  color: #424242;
+  letter-spacing: -0.88px;
+  transition: all 0.3s ease;
+}
+
+.address-search-button:hover {
+  background-color: #fffdef;
+}
+
+.button-group {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  gap: 19px;
+}
+
+.prev-button {
+  border: 1px solid #e0e0e0;
+  border-radius: 16px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 30px;
+  flex: 1;
+  min-width: 0;
+  cursor: pointer;
+  background-color: transparent;
+  font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+  font-weight: 500;
+  font-size: 22px;
+  line-height: 1.2;
+  color: #424242;
+  letter-spacing: -0.88px;
+  transition: all 0.3s ease;
+}
+
+.prev-button:hover {
+  background-color: #f8f9fa;
+}
+
+.confirm-button {
+  background-color: #fffdef;
+  border: 1px solid #bfad49;
+  border-radius: 16px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 30px;
+  flex: 1;
+  min-width: 0;
+  cursor: pointer;
+  font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+  font-weight: 500;
+  font-size: 22px;
+  line-height: 1.2;
+  color: #424242;
+  letter-spacing: -0.88px;
+  transition: all 0.3s ease;
+}
+
+.confirm-button:hover {
+  background-color: #fff9d0;
+}
+
+@media (max-width: 1024px) {
+  .user-info-content {
+    padding: 0 15px;
+    gap: 80px;
+  }
+
+  .form-label {
+    font-size: 22px;
+  }
+
+  .form-input {
+    font-size: 20px;
+  }
+
+  .address-row {
+    gap: 15px;
+  }
+
+  .address-search-button {
+    min-width: 120px;
+    padding: 24px 20px;
+    font-size: 20px;
+  }
+}
+
+@media (max-width: 768px) {
+  .user-info-container {
+    padding-top: 40px;
+  }
+
+  .user-info-content {
+    padding: 0 15px;
+    gap: 60px;
+  }
+
+  .form-section {
+    gap: 30px;
+  }
+
+  .form-group {
+    gap: 15px;
+  }
+
+  .form-label {
+    font-size: 20px;
+  }
+
+  .form-input {
+    font-size: 18px;
+  }
+
+  .input-wrapper {
+    padding: 18px 20px;
+  }
+
+  .address-row {
+    flex-direction: column;
+    gap: 15px;
+  }
+
+  .address-search-button {
+    width: 100%;
+    min-width: auto;
+  }
+
+  .button-group {
+    flex-direction: column;
+    gap: 15px;
+  }
+
+  .prev-button,
+  .confirm-button {
+    width: 100%;
+    padding: 20px 24px;
+    font-size: 20px;
+  }
+}
+
+@media (max-width: 480px) {
+  .user-info-content {
+    padding: 0 10px;
+    gap: 40px;
+  }
+
+  .form-label {
+    font-size: 18px;
+  }
+
+  .form-input {
+    font-size: 16px;
+  }
+
+  .input-wrapper {
+    padding: 16px 18px;
+  }
+
+  .address-search-button,
+  .prev-button,
+  .confirm-button {
+    font-size: 18px;
+    padding: 18px 20px;
+  }
+}

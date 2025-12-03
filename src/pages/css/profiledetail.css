@@ -1,0 +1,159 @@
+.container {
+    background-color: #FFFDEF;
+    min-height: 100vh;
+    flex-direction: column;
+    color: #333;
+}
+
+.profile-header {
+  position: absolute;
+  left: 345px;
+  top: 64px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  z-index: 1;
+}
+
+
+.profile-title {
+  font-family: 'Pretendard', sans-serif;
+  font-weight: 600;
+  font-size: 28px;
+  line-height: 1.2;
+  letter-spacing: -1.12px;
+  color: #212121;
+  margin: 0;
+}
+
+.profile-date {
+  font-family: 'Pretendard', sans-serif;
+  font-weight: 400;
+  font-size: 22px;
+  line-height: 1.2;
+  letter-spacing: -0.88px;
+  color: #616161;
+  margin: 0;
+}
+
+.whiteBox {
+    width: 1356px;
+    /* User specified width */
+    height: 716px;
+    /* User specified height */
+    background-color: #fff;
+    border-radius: 20px;
+    position: absolute;
+    top: 57%;
+    left: 59%;
+    transform: translate(-50%, -50%);
+    display: flex;
+    /* Flexbox to help position children */
+    flex-direction: column;
+    align-items: center;
+    /* Center horizontally */
+    padding-top: 50px;
+    /* Space from the top */
+    box-sizing: border-box;
+    /* Include padding in width/height */
+}
+
+.profileBox {
+    width: 220px;
+    height: 220px;
+    border-radius: 50%;
+    /* Make it a circle */
+    background-color: #e0e0e0;
+    /* Placeholder background */
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    overflow: hidden;
+    /* Ensure image stays within the circle */
+    position: relative;
+    /* For positioning edit icon */
+    margin-bottom: 20px;
+    /* Space between profileBox and other content */
+}
+
+.profileImage {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    /* Cover the area without distortion */
+}
+
+.editIconContainer {
+    position: absolute;
+    margin-left: 180px;
+    margin-top: 150px;
+    cursor: pointer;
+}
+
+.nameBox,
+.numberBox,
+.roomBox {
+    font-size: 20px;
+    margin-top: 30px;
+    gap: 20px;
+    display: flex;
+}
+
+.nameText,
+.numberText,
+.roomText {
+    color: #9E9E9E;
+}
+
+.name,
+.number,
+.roomNum {
+    font-weight: 500;
+}
+
+.studentInfoBox {
+    display: flex;
+    gap: 50px;
+}
+
+.pointBox {
+    margin-top: 100px;
+    font-size: 20px;
+    display: flex;
+    gap: 250px;
+}
+
+.pointText {
+    font-weight: 500;
+}
+
+.bonusPoints {
+    font-weight: 500;
+    color: #007AFF;
+    font-size: 25px;
+}
+
+.penaltyPoints {
+    font-weight: 500;
+    color: #FF3B30;
+    font-size: 25px;
+}
+
+.totalPoints {
+    font-weight: 500;
+    margin-top: 30px;
+    margin-left: 10px;
+    font-size: 25px;
+}
+
+.bonusPlMa, .penaltyPlMa {
+    display: flex;
+    align-items: center; /* Vertically center the items */
+    gap: 20px; /* Add some space between items */
+    margin-top: 30px;
+}
+
+.plusImage, .minusImage {
+    cursor: pointer;
+
+}

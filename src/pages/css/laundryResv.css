@@ -1,0 +1,236 @@
+.container2 {
+  background-color: #F9F9F6;
+  min-height: 100vh;
+  flex-direction: column;
+  color: #333;
+}
+
+
+
+.contentTitle {
+  font-size: 25px;
+  margin-bottom: -10px;
+}
+
+.contentText {
+
+  padding-top: 30px;
+  /* Apply padding here to position the title */
+  padding-left: 20px;
+  /* Add some padding to the left of the content */
+}
+
+.wash-mac-list {
+  margin-left: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 30px;
+  justify-content: center;
+  /* Center items within the list */
+  /* Removed margin-left: 50px; if it was present, to allow centering */
+}
+
+.wash-mac-item {
+  padding: 15px;
+  text-align: center;
+
+}
+
+.wash-mac-image-wrapper {
+  position: relative;
+  width: 400px;
+  /* Adjust image wrapper size */
+}
+
+.wash-mac-image {
+  width: 100%;
+  height: 100%;
+  margin-top: -30px;
+}
+
+.wash-mac-number {
+  font-size: 18px;
+}
+
+.wash-mac-status {
+  font-size: 18px;
+  margin-top: -30px;
+
+}
+
+.current-date {
+  position: absolute;
+  font-family: 'Pretendard', sans-serif;
+  font-weight: 400;
+  font-size: 22px;
+  line-height: 1.2;
+  letter-spacing: -0.88px;
+  color: #616161;
+  margin-left: 35px;
+  margin-top: 85px;
+}
+
+.laundryResv-title {
+  position: absolute;
+  font-family: 'Pretendard', sans-serif;
+  font-weight: 600;
+  font-size: 28px;
+  line-height: 1.2;
+  letter-spacing: -1.12px;
+  color: #212121;
+  margin-left: 35px;
+  margin-top: 35px;
+}
+
+.reservationBox {
+  display: flex;
+  justify-content: center;
+  /* Center children horizontally */
+  align-items: center;
+  /* Center children vertically */
+}
+
+.resvTime {
+  margin-left: -100px;
+  margin-top: 100px;
+  margin-bottom: 150px;
+}
+
+.resvBox {
+  border: #E0E0E0 solid;
+  background-color: #fff;
+  border-radius: 20px;
+  margin-left: 80px;
+  margin-top: -40px;
+  height: 430px;
+  width: 1109px;
+  padding: 20px;
+  /* Add padding to contain the grid */
+  box-sizing: border-box;
+  /* Include padding in width/height */
+}
+
+.reservation-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 15px;
+  height: 100%;
+  column-gap: 250px;
+  place-items: center;
+  /* Center grid items if they are smaller than grid cells */
+}
+
+.reservation-slot,
+.reserved-slot-content {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.reservation-slot.available {
+  border: 1px solid #E0E0E0;
+  border-radius: 10px;
+  background-color: white;
+  cursor: pointer;
+  width: 140px;
+  height: 80px;
+  transition: background-color 0.3s;
+}
+
+.reservation-slot.available:hover {
+  background-color: #fffadc;
+}
+
+.reservation-slot.available.restricted {
+  background-color: #f5f5f5;
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.reservation-slot.available.restricted:hover {
+  background-color: #f5f5f5;
+}
+
+.assigned-room-badge {
+  font-size: 0.7em;
+  color: #999;
+  font-weight: normal;
+}
+
+.reservation-slot.past {
+  border: 1px solid #E0E0E0;
+  border-radius: 10px;
+  background-color: #f5f5f5;
+  width: 140px;
+  height: 80px;
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.reservation-slot.in-use {
+  border: 1px solid #E0E0E0;
+  border-radius: 10px;
+  background-color: #fff3cd;
+  width: 140px;
+  height: 80px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-around;
+  align-items: center;
+  padding: 5px;
+  box-sizing: border-box;
+  cursor: not-allowed;
+}
+
+.reservation-slot.reserved {
+  border: 1px solid #E0E0E0;
+  border-radius: 10px;
+  background-color: white;
+  width: 140px;
+  height: 80px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-around;
+  align-items: center;
+  padding: 5px;
+  box-sizing: border-box;
+  cursor: default;
+}
+
+.reservation-slot.reserved.my-reservation {
+  background-color: #fffadc;
+  cursor: pointer;
+  border-color: #bfad49;
+}
+
+.reservation-slot.reserved.my-reservation:hover {
+  background-color: #fffbe7;
+}
+
+.reservation-slot.reserved.fixed-reservation {
+  background-color: #e8f5e9;
+  border-color: #81c784;
+  cursor: not-allowed;
+}
+
+.reservation-slot.reserved.fixed-reservation:hover {
+  background-color: #e8f5e9;
+}
+
+.reserved-slot-content {
+  color: #888;
+  font-size: 1.2em;
+  font-weight: bold;
+}
+
+.slot-room {
+  font-size: 0.8em;
+  color: #555;
+}
+
+.slot-name {
+  font-size: 1.1em;
+  font-weight: bold;
+  color: #333;
+}
