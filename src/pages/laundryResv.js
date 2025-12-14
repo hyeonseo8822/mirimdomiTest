@@ -65,8 +65,8 @@ function LaundryResv({ userInfo }) {
     { id: 3, status: '비어있음' },
   ]);
 
-  const washMacImagePath = process.env.PUBLIC_URL + '/img/washMacImg.svg';
-  const emptyWashMacImagePath = process.env.PUBLIC_URL + '/img/emptyWashMacImg.svg';
+  const washMacImagePath = '/img/washMacImg.svg';
+  const emptyWashMacImagePath = '/img/emptyWashMacImg.svg';
 
   // 현재 시간과 비교하여 슬롯 상태 확인
   const getSlotStatus = (timeSlot) => {
@@ -544,7 +544,7 @@ function LaundryResv({ userInfo }) {
         </div>
       </div>
       <div className='reservationBox'>
-        <img className="resvTime" src={process.env.PUBLIC_URL + '/img/resvTime.svg'} alt="Reservation Box" />
+        <img className="resvTime" src="/img/resvTime.svg" alt="Reservation Box" />
         <div className='resvBox'>
           <div className='reservation-grid'>
             {reservationSlots.map((slot) => {

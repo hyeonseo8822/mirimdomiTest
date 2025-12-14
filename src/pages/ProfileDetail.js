@@ -12,7 +12,7 @@ function ProfileDetail({ userInfo, onUserInfoUpdate, onUserProfileUpdate }) {
   const formattedDate = `${year}.${month}.${day}`;
 
   const [profileImage, setProfileImage] = useState(
-    userInfo?.profile_image || process.env.PUBLIC_URL + '/img/default-profile.png'
+    userInfo?.profile_image || '/img/default-profile.png'
   );
   const [points, setPoints] = useState({
     merits: userInfo?.merits || 0,
@@ -32,9 +32,9 @@ function ProfileDetail({ userInfo, onUserInfoUpdate, onUserProfileUpdate }) {
   const studentIdInputRef = useRef(null);
   const roomNumberInputRef = useRef(null);
 
-  const editIconPath = process.env.PUBLIC_URL + '/img/edit.svg';
-  const plusIconPath = process.env.PUBLIC_URL + '/img/plus.svg';
-  const minusIconPath = process.env.PUBLIC_URL + '/img/minus.svg';
+  const editIconPath = '/img/edit.svg';
+  const plusIconPath = '/img/plus.svg';
+  const minusIconPath = '/img/minus.svg';
 
   // userInfo가 변경되면 points와 profileImage 업데이트
   useEffect(() => {
@@ -43,7 +43,7 @@ function ProfileDetail({ userInfo, onUserInfoUpdate, onUserProfileUpdate }) {
       demerits: userInfo?.demerits || 0,
     });
     setProfileImage(
-      userInfo?.profile_image || process.env.PUBLIC_URL + '/img/default-profile.png'
+      userInfo?.profile_image || '/img/default-profile.png'
     );
     setEditValues({
       name: userInfo?.name || '',

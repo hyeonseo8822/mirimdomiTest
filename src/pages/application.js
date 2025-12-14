@@ -4,6 +4,7 @@ import './css/application.css';
 import { supabase } from '../supabaseClient';
 
 // 로컬 이미지 경로
+// 로컬 이미지 경로
 const calendarIcon = "/img/calendar-icon.svg";
 
 function Application({ userInfo }) {

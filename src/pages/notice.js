@@ -4,6 +4,7 @@ import './css/notice.css';
 import { supabase } from '../supabaseClient';
 
 // 로컬 이미지 경로
+// 로컬 이미지 경로
 const arrowRightIcon = "/img/arrow-right.svg";
 
 function Notice() {

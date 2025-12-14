@@ -50,3 +50,4 @@ npm run deploy
 - 환경 변수는 GitHub Secrets에 저장해야 합니다.
 - 첫 배포 후 몇 분 정도 기다려야 합니다.
 
+

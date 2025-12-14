@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react'; // useEffect 추가
+import React, { useState, useEffect } from 'react';
 import './css/community.css';
-import { supabase } from '../supabaseClient'; // Supabase 클라이언트 임포트
+import { supabase } from '../supabaseClient';
 
 // 로컬 이미지 경로
 const eyeIcon = "/img/eye-icon.svg";

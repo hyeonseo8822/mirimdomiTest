@@ -2,6 +2,7 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { GoogleOAuthProvider } from '@react-oauth/google';
 import './index.css';
+import './setupFetchDebug';
 import App from './App';
 
 // Google OAuth Client ID (환경 변수에서 가져오거나 직접 설정)

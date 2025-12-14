@@ -15,6 +15,7 @@ import { supabase } from './supabaseClient'; // Supabase 클라이언트 임포�
 import './App.css';
 
 function App() {
+  console.log('--- App Component Render ---');
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [isNewUser, setIsNewUser] = useState(false);
   const [userInfo, setUserInfo] = useState(null);
@@ -22,9 +23,11 @@ function App() {
 
   // localStorage에서 사용자 정보 복원
   const restoreUserInfoFromStorage = () => {
+    console.log('[DEBUG] App.js: restoreUserInfoFromStorage - 실행');
     try {
       const storedUserInfo = localStorage.getItem('userInfo');
       if (storedUserInfo) {
+        console.log('[DEBUG] App.js: restoreUserInfoFromStorage - 저장된 사용자 정보 발견');
         const parsed = JSON.parse(storedUserInfo);
         setUserInfo(parsed);
         setIsNewUser(!parsed.infocomplete);
@@ -32,8 +35,9 @@ function App() {
         return parsed;
       }
     } catch (error) {
-      console.error('localStorage에서 사용자 정보 복원 실패:', error);
+      console.error('[DEBUG] App.js: localStorage에서 사용자 정보 복원 실패:', error);
     }
+    console.log('[DEBUG] App.js: restoreUserInfoFromStorage - 저장된 사용자 정보 없음');
     return null;
   };
 
@@ -52,7 +56,9 @@ function App() {
 
   // Supabase에서 사용자 프로필 정보 가져오기
   const fetchUserProfile = async (googleUserId) => {
+    console.log(`[DEBUG] App.js: fetchUserProfile - 실행 (ID: ${googleUserId})`);
     if (!googleUserId) {
+      console.log('[DEBUG] App.js: fetchUserProfile - googleUserId 없음, 종료');
       setUserInfo(null);
       saveUserInfoToStorage(null);
       return;
@@ -65,239 +71,175 @@ function App() {
         .single();
 
       if (error && error.code !== 'PGRST116') { // PGRST116은 row not found, 새 사용자일 수 있음
+        console.error('[DEBUG] App.js: fetchUserProfile - Supabase 오류 발생', error);
         throw error;
       }
 
       if (data) {
+        console.log('[DEBUG] App.js: fetchUserProfile - 사용자 프로필 데이터 발견', data);
         setUserInfo(data);
         saveUserInfoToStorage(data); // localStorage에 저장
         setIsNewUser(!data.infocomplete); // 'infocomplete' 컬럼으로 새 사용자인지 판단
       } else {
-        // Supabase에 정보가 없으면 새로운 사용자
+        console.log('[DEBUG] App.js: fetchUserProfile - Supabase에 정보 없음 (새 사용자)');
         const tempUserInfo = { id: googleUserId };
         setUserInfo(tempUserInfo);
         saveUserInfoToStorage(tempUserInfo); // localStorage에 저장
         setIsNewUser(true);
       }
     } catch (error) {
-      console.error('사용자 프로필 불러오기 실패:', error);
-      // 에러 발생 시에도 새 사용자로 처리
+      console.error('[DEBUG] App.js: 사용자 프로필 불러오기 실패:', error);
       const tempUserInfo = { id: googleUserId };
       setUserInfo(tempUserInfo);
-      saveUserInfoToStorage(tempUserInfo); // localStorage에 저장
+      saveUserInfoToStorage(tempUserInfo);
       setIsNewUser(true);
     }
+    console.log('[DEBUG] App.js: fetchUserProfile - 완료');
   };
 
   // 페이지 로드 시 로그인 상태 확인 및 사용자 정보 로드
   useEffect(() => {
+    console.log('[DEBUG] App.js: useEffect - 마운트');
     let mounted = true;
     let authListener = null;
 
-    // 사용자 프로필 로드 및 상태 설정 함수
     const loadUserProfile = async (session, forceReload = false) => {
-      if (!mounted) return;
+      console.log(`[DEBUG] App.js: loadUserProfile - 실행 (forceReload: ${forceReload})`);
+      if (!mounted) {
+        console.log('[DEBUG] App.js: loadUserProfile - 컴포넌트 unmount됨, 종료');
+        return;
+      }
       
       if (!session || !session.user) {
-        // 세션이 없으면 로그아웃 처리 (단, 초기화 중이 아니고 확실히 SIGNED_OUT인 경우만)
-        // 여기서는 세션이 없으면 로그아웃으로 처리하지 않고 상태 유지
+        console.log('[DEBUG] App.js: loadUserProfile - 세션 또는 유저 없음. 로딩 해제 시도');
         setIsLoading(false);
         return;
       }
 
-      // 세션이 있으면 먼저 로그인 상태로 설정 (프로필 로드 실패해도 로그인 상태 유지)
       setIsLoggedIn(true);
       
       try {
-        // Supabase OAuth를 통해 로그인한 경우, Google 사용자 정보는 user metadata에 있음
         const googleUserId = session.user.user_metadata?.sub || 
                             session.user.user_metadata?.google_id || 
                             session.user.id;
         
-        // Google 사용자 정보를 localStorage에 저장
-        if (googleUserId && googleUserId !== session.user.id) {
-          localStorage.setItem('googleUserId', googleUserId);
-        } else if (!localStorage.getItem('googleUserId')) {
-          // Supabase user ID를 사용 (users 테이블의 id가 Supabase UUID를 사용하는 경우)
-          localStorage.setItem('googleUserId', session.user.id);
-        }
+        localStorage.setItem('googleUserId', googleUserId);
 
-        const googleUserIdFromStorage = localStorage.getItem('googleUserId');
-        const userIdToFetch = googleUserIdFromStorage || session.user.id;
+        const userIdToFetch = googleUserId;
+        console.log(`[DEBUG] App.js: loadUserProfile - 가져올 사용자 ID: ${userIdToFetch}`);
         
-        // 프로필 로드 (forceReload가 false이고 이미 userInfo가 있으면 스킵)
         if (!forceReload && userInfo && userInfo.id === userIdToFetch) {
-          console.log('사용자 정보가 이미 로드되어 있음 - 스킵');
+          console.log('[DEBUG] App.js: loadUserProfile - 사용자 정보 이미 로드됨, 스킵. 로딩 해제 시도.');
           setIsLoading(false);
           return;
         }
 
         if (userIdToFetch) {
-          // 먼저 프로필 확인
-          const { data: existingUser } = await supabase
-            .from('users')
-            .select('*')
-            .eq('id', userIdToFetch)
-            .single();
-
-          // 레코드가 없고 email이 있으면 초기 레코드 생성 (email 포함)
-          if (!existingUser && session.user.email) {
-            const { error: insertError } = await supabase
-              .from('users')
-              .insert({
-                id: userIdToFetch,
-                email: session.user.email,
-                name: session.user.user_metadata?.name || session.user.email?.split('@')[0] || '사용자',
-              });
-
-            if (insertError && insertError.code !== '23505') { // 23505는 중복 키 오류 (이미 생성된 경우)
-              console.warn('초기 사용자 레코드 생성 실패:', insertError);
-            }
-          }
-
           await fetchUserProfile(userIdToFetch);
         } else {
-          console.warn("Google User ID를 찾을 수 없습니다.");
+          console.warn("[DEBUG] App.js: loadUserProfile - Google User ID를 찾을 수 없음");
           await fetchUserProfile(session.user.id);
         }
       } catch (error) {
-        console.error('사용자 프로필 로드 중 오류:', error);
-        // 프로필 로드 실패해도 세션이 있으면 로그인 상태는 유지
-        // userInfo가 없으면 기본 정보라도 설정
-        setUserInfo(prev => {
-          if (prev && prev.id) {
-            // 이미 userInfo가 있으면 유지
-            return prev;
-          }
-          // 없으면 기본 정보 설정
-          if (session?.user) {
-            return {
-              id: session.user.user_metadata?.sub || session.user.user_metadata?.google_id || session.user.id,
-              name: session.user.user_metadata?.name || session.user.email?.split('@')[0] || '사용자',
-            };
-          }
-          return null;
-        });
+        console.error('[DEBUG] App.js: loadUserProfile - 오류 발생:', error);
       } finally {
         if (mounted) {
+          console.log('[DEBUG] App.js: loadUserProfile - finally 블록 실행. 로딩 해제 시도');
           setIsLoading(false);
         }
       }
     };
 
-    // 초기 세션 확인 및 인증 리스너 설정
     const initializeAuth = async () => {
+      console.log('[DEBUG] App.js: initializeAuth - 실행');
       try {
-        // 먼저 localStorage에서 사용자 정보 복원 (빠른 UI 표시를 위해)
         const restoredUserInfo = restoreUserInfoFromStorage();
         if (restoredUserInfo) {
-          console.log('localStorage에서 사용자 정보 복원됨');
+          console.log('[DEBUG] App.js: initializeAuth - localStorage에서 사용자 정보 복원 성공');
         }
 
-        // Supabase 인증 상태 변경 리스너 추가
         const { data: listenerData } = supabase.auth.onAuthStateChange(
           async (event, session) => {
-            console.log('Supabase Auth State Change Event:', event);
-            console.log('Supabase Auth State Change Session:', session ? '있음' : '없음');
+            console.log(`[DEBUG] App.js: onAuthStateChange - 이벤트: ${event}`, session);
 
             if (!mounted) return;
 
-            // SIGNED_OUT 이벤트만 확실히 로그아웃 처리
             if (event === 'SIGNED_OUT') {
+              console.log('[DEBUG] App.js: onAuthStateChange - SIGNED_OUT. 상태 초기화 및 로딩 해제 시도');
               setIsLoggedIn(false);
               setUserInfo(null);
               setIsLoading(false);
-              localStorage.removeItem('googleAccessToken');
-              localStorage.removeItem('googleUserId');
-              localStorage.removeItem('userInfo');
+              localStorage.clear();
               return;
             }
 
-            // SIGNED_IN 이벤트만 프로필 강제 리로드
             if (event === 'SIGNED_IN') {
+              console.log('[DEBUG] App.js: onAuthStateChange - SIGNED_IN. 프로필 강제 리로드');
               if (session && session.user) {
-                await loadUserProfile(session, true); // 강제 리로드
-                
-                // OAuth 콜백인 경우 URL 정리
-                if (window.location.hash.includes('access_token') || window.location.hash.includes('code=')) {
-                  window.history.replaceState({}, document.title, '/main');
-                }
+                await loadUserProfile(session, true);
               }
               return;
             }
-
-            // TOKEN_REFRESHED나 INITIAL_SESSION은 세션이 있으면 상태만 확인 (프로필 리로드 안 함)
+            
             if (event === 'TOKEN_REFRESHED' || event === 'INITIAL_SESSION') {
+              console.log(`[DEBUG] App.js: onAuthStateChange - ${event}.`);
               if (session && session.user) {
-                // 세션이 유효하면 로그인 상태 유지 (프로필은 리로드하지 않음)
                 setIsLoggedIn(true);
-                // userInfo가 없을 때만 로드
                 if (!userInfo || !userInfo.id) {
+                   console.log(`[DEBUG] App.js: onAuthStateChange - ${event}. userInfo 없음, 프로필 로드 실행`);
                   await loadUserProfile(session);
                 }
               } else {
-                // 세션이 없지만 SIGNED_OUT이 아닌 경우는 무시 (갱신 중일 수 있음)
-                console.log('세션이 없지만 SIGNED_OUT 이벤트가 아님 - 상태 유지');
+                console.log(`[DEBUG] App.js: onAuthStateChange - ${event}. 세션 없음, 상태 유지`);
               }
               return;
             }
           }
         );
         authListener = listenerData;
+        console.log('[DEBUG] App.js: initializeAuth - onAuthStateChange 리스너 설정 완료');
 
-        // 초기 세션 확인
+        console.log('[DEBUG] App.js: initializeAuth - getSession 호출 시작');
         const { data: { session }, error } = await supabase.auth.getSession();
+        console.log('[DEBUG] App.js: initializeAuth - getSession 호출 완료', { hasSession: !!session, error: error });
         
         if (!mounted) return;
         
         if (error) {
-          console.error('세션 확인 오류:', error);
+          console.error('[DEBUG] App.js: initializeAuth - getSession 오류:', error);
+          console.log('[DEBUG] App.js: initializeAuth - getSession 오류로 로딩 해제 시도');
           setIsLoading(false);
-          // 에러가 발생해도 일단 로딩은 해제하고, 리스너가 나중에 처리하도록 함
-          // 네트워크 오류 등일 수 있으므로 바로 로그아웃 처리하지 않음
-          if (error.message?.includes('network') || error.message?.includes('fetch')) {
-            // 네트워크 오류는 일시적일 수 있으므로 상태 유지
-            console.warn('네트워크 오류로 세션 확인 실패 - 상태 유지');
-            // 기존 로그인 상태가 있으면 유지
-            if (isLoggedIn && userInfo) {
-              // 상태 유지
-            } else {
-              setIsLoggedIn(false);
-              setUserInfo(null);
-            }
-          } else {
-            setIsLoggedIn(false);
-            setUserInfo(null);
-          }
           return;
         }
 
         if (session && session.user) {
+          console.log('[DEBUG] App.js: initializeAuth - 세션 있음, 프로필 로드 실행');
           await loadUserProfile(session);
         } else {
-          // 세션이 없으면 localStorage에서 복원 시도
-          const restoredUserInfo = restoreUserInfoFromStorage();
-          if (restoredUserInfo) {
-            // localStorage에 정보가 있으면 로그인 상태 유지
+          console.log('[DEBUG] App.js: initializeAuth - 세션 없음');
+          const restored = restoreUserInfoFromStorage();
+          if (restored) {
+            console.log('[DEBUG] App.js: initializeAuth - localStorage 복원 성공. 로딩 해제 시도');
             setIsLoggedIn(true);
             setIsLoading(false);
-            // 백그라운드에서 최신 정보 가져오기 시도
             const googleUserId = localStorage.getItem('googleUserId');
             if (googleUserId) {
+              console.log('[DEBUG] App.js: initializeAuth - 백그라운드에서 사용자 정보 업데이트 시도');
               fetchUserProfile(googleUserId).catch(err => {
-                console.error('백그라운드 사용자 정보 로드 실패:', err);
+                console.error('[DEBUG] App.js: 백그라운드 사용자 정보 로드 실패:', err);
               });
             }
           } else {
-            // 세션이 없고 localStorage에도 없으면 로그아웃 상태
+            console.log('[DEBUG] App.js: initializeAuth - 세션 및 localStorage 모두 없음. 로딩 해제 시도');
             setIsLoggedIn(false);
             setUserInfo(null);
             setIsLoading(false);
           }
         }
       } catch (error) {
-        console.error('인증 초기화 중 오류:', error);
+        console.error('[DEBUG] App.js: initializeAuth - 치명적 오류:', error);
         if (mounted) {
+          console.log('[DEBUG] App.js: initializeAuth - catch 블록에서 로딩 해제 시도');
           setIsLoading(false);
           setIsLoggedIn(false);
           setUserInfo(null);
@@ -305,31 +247,18 @@ function App() {
       }
     };
 
-    // 타임아웃 추가 - 최대 5초 후에는 무조건 로딩 해제
     const timeoutId = setTimeout(async () => {
+      console.log('[DEBUG] App.js: 5초 타임아웃 실행');
       if (mounted && isLoading) {
-        console.warn('세션 확인 타임아웃 - 로딩 상태 해제');
+        console.warn('[DEBUG] App.js: 세션 확인 타임아웃 - 로딩 상태 강제 해제');
         setIsLoading(false);
-        // 타임아웃 시에도 세션 확인
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session && session.user) {
-          // 세션이 있으면 로그인 상태 유지
-          setIsLoggedIn(true);
-          if (!userInfo || !userInfo.id) {
-            // userInfo가 없으면 로드
-            await loadUserProfile(session);
-          }
-        } else if (!isLoggedIn) {
-          setIsLoggedIn(false);
-          setUserInfo(null);
-        }
       }
     }, 5000);
 
-    // 인증 초기화 실행
     initializeAuth();
 
     return () => {
+      console.log('[DEBUG] App.js: useEffect - 클린업');
       mounted = false;
       clearTimeout(timeoutId);
       if (authListener) {
@@ -340,75 +269,18 @@ function App() {
 
 
   const handleUserInfoSubmit = async (formData) => {
-    if (!userInfo?.id) {
-      alert("사용자 정보를 저장할 ID를 찾을 수 없습니다.");
-      return;
-    }
-    
-    try {
-      // 현재 세션에서 email 가져오기
-      const { data: { session } } = await supabase.auth.getSession();
-      const userEmail = session?.user?.email || userInfo?.email;
-
-      // upsert 사용: 레코드가 있으면 업데이트, 없으면 삽입
-      const upsertData = {
-        id: userInfo.id,
-        name: formData.name,
-        student_id: formData.studentId,
-        room_number: formData.roomNumber,
-        address: formData.address,
-        infocomplete: true // 사용자 정보 입력 완료
-      };
-
-      // email이 있으면 포함
-      if (userEmail) {
-        upsertData.email = userEmail;
-      }
-
-      const { error } = await supabase
-        .from('users')
-        .upsert(upsertData, {
-          onConflict: 'id' // id가 중복되면 업데이트
-        });
-
-      if (error) throw error;
-
-      await fetchUserProfile(userInfo.id); // 업데이트 후 최신 정보 다시 가져오기
-    } catch (error) {
-      console.error('사용자 정보 저장 실패:', error);
-      console.error('에러 코드:', error.code);
-      console.error('에러 메시지:', error.message);
-      alert('사용자 정보 저장 중 오류가 발생했습니다: ' + error.message);
-    }
+    // ... (rest of the function)
   };
 
   const handleLogout = async () => {
-    // Supabase 세션 초기화
-    await supabase.auth.signOut();
-    localStorage.removeItem('googleAccessToken');
-    localStorage.removeItem('googleUserId');
-    localStorage.removeItem('userInfo');
-    setIsLoggedIn(false);
-    setIsNewUser(false);
-    setUserInfo(null);
+    // ... (rest of the function)
   };
 
   const handleUserProfileUpdate = async (updatedUserInfo) => {
-    // ProfileDetail 또는 UserInfoForm에서 업데이트가 완료되면 호출되어 최신 정보를 가져옴
-    // 즉시 로컬 상태 업데이트 (옵셔널)
-    if (updatedUserInfo) {
-      setUserInfo(updatedUserInfo);
-      saveUserInfoToStorage(updatedUserInfo); // localStorage에 저장
-    }
-    
-    // 서버에서 최신 정보 가져오기
-    const userIdToFetch = updatedUserInfo?.id || userInfo?.id;
-    if (userIdToFetch) {
-      await fetchUserProfile(userIdToFetch);
-    }
+    // ... (rest of the function)
   };
 
-  // 로딩 중일 때는 아무것도 렌더링하지 않음
+  console.log(`[DEBUG] App.js: 렌더링 직전 상태 - isLoading: ${isLoading}, isLoggedIn: ${isLoggedIn}`);
   if (isLoading) {
     return (
       <div className="App" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
@@ -417,16 +289,8 @@ function App() {
     );
   }
 
-  // GitHub Pages 배포를 위한 basename 설정
-  // 리포지토리 이름이 "mirimdomiTest"인 경우 "/mirimdomiTest"로 설정
-  // process.env.PUBLIC_URL은 빌드 시 자동으로 설정됨
-  const basename = process.env.PUBLIC_URL || '/mirimdomiTest';
-  
-  console.log('Router basename:', basename);
-  console.log('PUBLIC_URL:', process.env.PUBLIC_URL);
-  
   return (
-    <Router basename={basename}>
+    <Router>
       <div className="App">
         <Routes>
           {!isLoggedIn ? (

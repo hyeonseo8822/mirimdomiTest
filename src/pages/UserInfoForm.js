@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { supabase } from '../supabaseClient';
 import './css/UserInfoForm.css';
 
+// 로컬 이미지 경로
 const imgCheck = "/img/check-icon.svg";
 const imgCancel = "/img/cancel-icon.svg";
 
