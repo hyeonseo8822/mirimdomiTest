@@ -2,22 +2,15 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import './css/alarm.css';
 import { supabase, ensureValidSession } from '../supabaseClient';
-import useAuth from '../hooks/useAuth';
 
 // 로컬 이미지 경로
 const arrowRightIcon = "/img/arrow-right.svg";
 
-function Alarm({ userInfo }) {
+function AdminAlarm({ userInfo }) {
   const navigate = useNavigate();
   const [selectedAlarm, setSelectedAlarm] = useState(null);
   const [alarms, setAlarms] = useState([]);
   const [alarmsLoading, setAlarmsLoading] = useState(true);
-  
-  // 인증 훅 사용 (앱 전역 인증 상태 재사용)
-  const { user: authUser } = useAuth();
-  
-  // 부모로부터 전달된 userInfo가 우선. 없으면 auth 훅에서 가져온 user 사용.
-  const effectiveUser = userInfo || authUser;
 
   // 현재 날짜 포맷팅
   const getCurrentDate = () => {
@@ -48,27 +41,20 @@ function Alarm({ userInfo }) {
     return `${hours}:${minutes}`;
   };
 
-  // 알람 데이터 가져오기 (Main.js와 동일한 로직)
+  // 알람 데이터 가져오기 (관리자용: 공지, 벌점, 상점, 외출만)
   const fetchAlarms = async () => {
-    if (!effectiveUser?.id) {
-      setAlarms([]);
-      setAlarmsLoading(false);
-      return;
-    }
-
     setAlarmsLoading(true);
-    
-    // user_id를 문자열로 변환하고 trim (alarm 테이블의 user_id는 text 타입)
-    const userIdString = String(effectiveUser.id).trim();
 
     try {
       // 세션 확인 및 갱신
       await ensureValidSession();
 
+      // 공지사항, 벌점, 상점, 외출 관련 알람만 조회
+      // type 필드에 '공지', '벌점', '상점', '외출'이 포함된 알람만 조회
       const { data, error } = await supabase
         .from('alarm')
         .select('*')
-        .eq('user_id', userIdString)
+        .or('type.eq.공지,type.eq.벌점,type.eq.상점,type.eq.외출')
         .order('created_at', { ascending: false });
 
       if (error) {
@@ -77,16 +63,25 @@ function Alarm({ userInfo }) {
         return;
       }
 
-      // 데이터 포맷 변환 (Main.js와 동일한 형식)
-      const formattedAlarms = (data || []).map(alarm => ({
-        id: alarm.id,
-        type: alarm.type || '알림',
-        message: alarm.message || '',
-        time: alarm.created_at ? new Date(alarm.created_at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false }) : getTimeFormat(alarm.created_at),
-        detail: alarm.detail || '',
-        created_at: alarm.created_at,
-        is_read: alarm.is_read || false,
-      }));
+      // 데이터 포맷 변환 및 필터링
+      const formattedAlarms = (data || [])
+        .map(alarm => ({
+          id: alarm.id,
+          type: alarm.type || '알림',
+          message: alarm.message || '',
+          time: alarm.created_at ? new Date(alarm.created_at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false }) : getTimeFormat(alarm.created_at),
+          detail: alarm.detail || '',
+          created_at: alarm.created_at,
+          is_read: alarm.is_read || false,
+        }))
+        // 외출 타입 알람 중에서 "외출 신청이 승인되었습니다." (이름 없음)는 제외
+        .filter(alarm => {
+          if (alarm.type === '외출') {
+            // "외출 신청이 승인되었습니다:" 뒤에 이름이 있는 것만 표시
+            return alarm.message.includes('외출 신청이 승인되었습니다:');
+          }
+          return true; // 외출이 아닌 알람은 모두 표시
+        });
 
       setAlarms(formattedAlarms);
     } catch (error) {
@@ -99,40 +94,34 @@ function Alarm({ userInfo }) {
 
   // 컴포넌트 마운트 시 알람 가져오기 및 실시간 구독
   useEffect(() => {
-    if (!effectiveUser?.id) {
-      setAlarms([]);
-      setAlarmsLoading(false);
-      return;
-    }
-
     fetchAlarms();
 
-    // 실시간 구독 설정
-    const userIdString = String(effectiveUser.id).trim();
-    
+    // 실시간 구독 설정 (공지, 벌점, 상점 관련 알람만)
     const subscription = supabase
-      .channel('alarm_changes')
+      .channel('admin_alarm_changes')
       .on(
         'postgres_changes',
         {
           event: '*',
           schema: 'public',
           table: 'alarm',
-          filter: `user_id=eq.${userIdString}`,
         },
         (payload) => {
-          console.log('[DEBUG] Alarm.js: Realtime (alarm) - 변경 감지', payload);
-          fetchAlarms();
+          // 공지, 벌점, 상점, 외출 관련 알람만 처리
+          if (payload.new && ['공지', '벌점', '상점', '외출'].includes(payload.new.type)) {
+            console.log('[DEBUG] AdminAlarm.js: Realtime (alarm) - 변경 감지', payload);
+            fetchAlarms();
+          }
         }
       )
       .subscribe();
-    console.log('[DEBUG] Alarm.js: Realtime (alarm) - 구독 시작');
+    console.log('[DEBUG] AdminAlarm.js: Realtime (alarm) - 구독 시작');
 
     return () => {
-      console.log('[DEBUG] Alarm.js: Realtime (alarm) - 구독 해제');
+      console.log('[DEBUG] AdminAlarm.js: Realtime (alarm) - 구독 해제');
       try { subscription.unsubscribe(); } catch (e) {}
     };
-  }, [effectiveUser?.id]);
+  }, []);
 
   const handleAlarmClick = (alarm) => {
     setSelectedAlarm(alarm);
@@ -203,4 +192,5 @@ function Alarm({ userInfo }) {
   );
 }
 
-export default Alarm;
+export default AdminAlarm;
+

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import './css/community.css';
-import { supabase } from '../supabaseClient';
+import { supabase, ensureValidSession } from '../supabaseClient';
 
 // 로컬 이미지 경로
 const eyeIcon = "/img/eye-icon.svg";
@@ -40,6 +40,14 @@ function Community({ userInfo }) { // userInfo prop 받기
   // 게시글 가져오기 (초기 로딩 및 새로고침)
   const fetchPosts = async () => {
     setLoading(true);
+    try {
+      await ensureValidSession();
+    } catch (sessionError) {
+      console.error('세션 오류:', sessionError);
+      setLoading(false);
+      return;
+    }
+    
     const { data, error } = await supabase
       .from('posts')
       .select('id, title, category, views, comments_count, created_at, user_name')
@@ -61,6 +69,9 @@ function Community({ userInfo }) { // userInfo prop 받기
   // 게시글 상세 정보 및 댓글 가져오기
   const fetchPostDetail = async (postId) => {
     try {
+      // 세션 확인 및 갱신
+      await ensureValidSession();
+      
       // 먼저 현재 게시글 정보 가져오기
       const { data: currentPost, error: currentError } = await supabase
         .from('posts')
@@ -72,13 +83,21 @@ function Community({ userInfo }) { // userInfo prop 받기
         console.error('게시글 정보 가져오기 실패:', currentError);
       } else {
         // 조회수 증가
-        await supabase
-          .from('posts')
-          .update({ views: (currentPost.views || 0) + 1 })
-          .eq('id', postId);
+        try {
+          await ensureValidSession();
+          const { error: updateError } = await supabase
+            .from('posts')
+            .update({ views: (currentPost.views || 0) + 1 })
+            .eq('id', postId);
+          if (updateError) throw updateError;
+        } catch (updateError) {
+          console.error('조회수 업데이트 실패:', updateError);
+          // Don't alert the user for this, just log it, as it's a non-critical background task.
+        }
       }
 
       // 게시글 상세 정보 가져오기
+      await ensureValidSession();
       const { data: postData, error: postError } = await supabase
         .from('posts')
         .select('*')
@@ -93,6 +112,7 @@ function Community({ userInfo }) { // userInfo prop 받기
       setPostDetail(postData);
 
       // 댓글 가져오기
+      await ensureValidSession();
       const { data: commentsData, error: commentsError } = await supabase
         .from('comments')
         .select('*')
@@ -111,6 +131,7 @@ function Community({ userInfo }) { // userInfo prop 받기
         
         if (postData.comments_count !== actualCommentCount) {
           // 댓글 수가 다르면 업데이트
+          await ensureValidSession();
           await supabase
             .from('posts')
             .update({ comments_count: actualCommentCount })
@@ -179,6 +200,7 @@ function Community({ userInfo }) { // userInfo prop 받기
     }
 
     try {
+      await ensureValidSession();
       const { data, error } = await supabase
         .from('comments')
         .insert([
@@ -203,6 +225,7 @@ function Community({ userInfo }) { // userInfo prop 받기
       setComments(newComments);
       
       // 게시글의 댓글 수 업데이트
+      await ensureValidSession();
       const newCommentCount = newComments.length;
       const { error: updateError } = await supabase
         .from('posts')
@@ -248,8 +271,11 @@ function Community({ userInfo }) { // userInfo prop 받기
       category: selectedCategory,
       user_id: userInfo.id,
       user_name: userInfo.name,
+      views: 0,
+      comments_count: 0,
     };
 
+    await ensureValidSession();
     const { error } = await supabase.from('posts').insert([newPost]);
 
     if (error) {

@@ -4,6 +4,7 @@ import { GoogleOAuthProvider } from '@react-oauth/google';
 import './index.css';
 import './setupFetchDebug';
 import App from './App';
+import { AuthProvider } from './contexts/AuthContext';
 
 // Google OAuth Client ID (환경 변수에서 가져오거나 직접 설정)
 const GOOGLE_CLIENT_ID = process.env.REACT_APP_GOOGLE_CLIENT_ID || '979401871852-8et0bdh44s7a1anlcsvegvo3r4cj0en4.apps.googleusercontent.com';
@@ -12,7 +13,9 @@ const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(
   <React.StrictMode>
     <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
-      <App />
+      <AuthProvider>
+        <App />
+      </AuthProvider>
     </GoogleOAuthProvider>
   </React.StrictMode>
 );

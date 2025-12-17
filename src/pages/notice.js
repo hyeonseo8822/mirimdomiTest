@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import './css/notice.css';
-import { supabase } from '../supabaseClient';
+import { supabase, ensureValidSession } from '../supabaseClient';
 
 // 로컬 이미지 경로
 // 로컬 이미지 경로
@@ -36,84 +36,80 @@ function Notice() {
   const fetchNotices = async () => {
     setLoading(true);
     try {
-      console.log('공지사항 데이터 가져오기 시작...');
+      // 세션 확인 및 갱신
+      await ensureValidSession();
       
-      // 먼저 'notice' 테이블 시도
-      let { data, error } = await supabase
+      const { data, error } = await supabase
         .from('notice')
-        .select('*')
+        .select('id, title, content, created_at')
         .order('created_at', { ascending: false });
-
-      console.log('공지사항 쿼리 결과 (notice):', { data, error, dataLength: data?.length });
-
-      // 에러가 있고 테이블을 찾을 수 없다면 'notices' 시도
-      if (error && (error.message?.includes('relation') || error.message?.includes('does not exist'))) {
-        console.log('notice 테이블을 찾을 수 없음, notices 테이블 시도...');
-        const result = await supabase
-          .from('notices')
-          .select('*')
-          .order('created_at', { ascending: false });
-        data = result.data;
-        error = result.error;
-        console.log('공지사항 쿼리 결과 (notices):', { data, error, dataLength: data?.length });
-      }
 
       if (error) {
         console.error('공지사항 불러오기 실패:', error);
-        console.error('에러 상세:', JSON.stringify(error, null, 2));
-        alert('공지사항을 불러오는 중 오류가 발생했습니다: ' + error.message);
         setNotices([]);
         return;
       }
 
       if (!data) {
-        console.warn('데이터가 null입니다.');
         setNotices([]);
         return;
       }
 
-      console.log('가져온 공지사항 데이터:', data);
-      console.log('데이터 개수:', data.length);
-
       // 데이터 포맷 변환
       const formattedNotices = (data || []).map(notice => {
-        if (!notice) {
-          console.warn('null notice 발견');
-          return null;
-        }
+        const content = notice.content || '';
+        const description = content.length > 50 ? content.substring(0, 50) + '...' : content;
+        
         return {
           id: notice.id,
           title: notice.title || '(제목 없음)',
           date: formatDate(notice.created_at),
-          content: notice.content || '',
+          content: content,
+          description: description,
+          createdAt: notice.created_at ? new Date(notice.created_at) : new Date(),
         };
-      }).filter(notice => notice !== null); // null 제거
-
-      console.log('포맷팅된 공지사항:', formattedNotices);
-      console.log('포맷팅된 공지사항 개수:', formattedNotices.length);
+      });
       
       setNotices(formattedNotices);
     } catch (error) {
       console.error('공지사항 가져오기 중 오류:', error);
-      console.error('에러 스택:', error.stack);
-      alert('공지사항을 불러오는 중 오류가 발생했습니다: ' + (error.message || '알 수 없는 오류'));
       setNotices([]);
     } finally {
       setLoading(false);
     }
   };
 
-  // 컴포넌트 마운트 시 공지사항 가져오기
+  // 컴포넌트 마운트 시 공지사항 가져오기 및 실시간 구독
   useEffect(() => {
     fetchNotices();
+
+    // 실시간 구독 설정
+    const subscription = supabase
+      .channel('notice_changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'notice',
+        },
+        (payload) => {
+          console.log('[DEBUG] Notice.js: Realtime (notice) - 변경 감지', payload);
+          fetchNotices();
+        }
+      )
+      .subscribe();
+    console.log('[DEBUG] Notice.js: Realtime (notice) - 구독 시작');
+
+    return () => {
+      console.log('[DEBUG] Notice.js: Realtime (notice) - 구독 해제');
+      try { subscription.unsubscribe(); } catch (e) {}
+    };
   }, []);
 
   const handleNoticeClick = (notice) => {
     setSelectedNotice(notice);
   };
-
-  // 디버깅: 렌더링 시 notices 상태 확인
-  console.log('Notice 컴포넌트 렌더링:', { loading, noticesCount: notices.length, notices });
 
   return (
     <div className="notice">
@@ -137,17 +133,27 @@ function Notice() {
             ) : (
               notices.map((notice) => {
                 console.log('공지사항 렌더링:', notice);
+                const content = notice.content || '';
+                const description = content.length > 50 ? content.substring(0, 50) + '...' : content;
+                
                 return (
                   <div 
                     key={notice.id} 
                     className="notice-item"
                     onClick={() => handleNoticeClick(notice)}
                   >
-                    <div className="notice-content">
-                      <div className="notice-dot"></div>
-                      <p className="notice-title-text">{notice.title}</p>
+                    <div className="notice-item-content">
+                      <div className="notice-content">
+                        <div className="notice-dot"></div>
+                        <div className="notice-text-content">
+                          <p className="notice-title-text">{notice.title}</p>
+                          {description && (
+                            <p className="notice-description">{description}</p>
+                          )}
+                        </div>
+                      </div>
+                      <p className="notice-date-text">{notice.date}</p>
                     </div>
-                    <p className="notice-date-text">{notice.date}</p>
                   </div>
                 );
               })

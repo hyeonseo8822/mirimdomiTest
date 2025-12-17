@@ -53,6 +53,14 @@
   letter-spacing: -0.72px;
   width: 100%;
   box-sizing: border-box;
+  border: none;
+  outline: none;
+}
+
+.sidebar-item:focus,
+.sidebar-item:focus-visible {
+  outline: none;
+  border: none;
 }
 
 .sidebar-item:hover {
@@ -74,11 +82,34 @@
 }
 
 .sidebar-icon {
-  width: 23px;
-  height: 23px;
-  max-width: 23px;
-  max-height: 23px;
+  width: 28px;
+  height: 28px;
+  max-width: 28px;
+  max-height: 28px;
   object-fit: contain;
+}
+
+/* 공지사항 아이콘은 조금 더 크게 */
+.sidebar-icon.notice-icon {
+  width: 34px;
+  height: 34px;
+  max-width: 34px;
+  max-height: 34px;
+}
+
+/* 공지사항 아이템의 간격 조정 */
+.sidebar-item.notice-item,
+.sidebar-item.notice-item.active,
+.sidebar-item.notice-item:hover {
+  border: none;
+  outline: none;
+  gap: 12px !important; /* 공지사항 아이콘이 더 커서 간격을 줄임 */
+}
+
+.sidebar-item.notice-item:focus,
+.sidebar-item.notice-item:focus-visible {
+  outline: none;
+  border: none;
 }
 
 .sidebar-label {

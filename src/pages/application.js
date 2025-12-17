@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import './css/application.css';
-import { supabase } from '../supabaseClient';
+import { supabase, ensureValidSession } from '../supabaseClient';
 
 // 로컬 이미지 경로
 // 로컬 이미지 경로
@@ -25,22 +25,29 @@ function Application({ userInfo }) {
   const currentMonth = today.getMonth() + 1;
   const currentDay = today.getDate();
 
-  // 현재 달의 첫 토요일 계산
-  const getFirstSaturday = () => {
+  // 오늘이 포함된 주의 토요일 계산 (초기 선택값으로 사용)
+  const getInitialSaturday = () => {
+    const todayDayOfWeek = today.getDay(); // 0(일)~6(토)
+    const diffToSaturday = 6 - todayDayOfWeek;
+    const saturdayDateObj = new Date(currentYear, currentMonth - 1, currentDay + diffToSaturday);
+    // 같은 달의 토요일만 유효하게 사용
+    if (
+      saturdayDateObj.getFullYear() === currentYear &&
+      saturdayDateObj.getMonth() + 1 === currentMonth
+    ) {
+      return saturdayDateObj.getDate();
+    }
+    // 다른 달이면 현재 달의 첫 토요일 반환
     const firstDay = new Date(currentYear, currentMonth - 1, 1).getDay();
-    // 첫 토요일 계산
-    // 일요일(0) -> 6일, 월요일(1) -> 5일, 화요일(2) -> 4일, 수요일(3) -> 3일
-    // 목요일(4) -> 2일, 금요일(5) -> 1일, 토요일(6) -> 1일
-    if (firstDay === 6) return 1; // 첫날이 토요일
-    if (firstDay === 0) return 6; // 첫날이 일요일
-    return 7 - firstDay; // 나머지 경우
+    if (firstDay === 6) return 1;
+    if (firstDay === 0) return 6;
+    return 7 - firstDay;
   };
   
-  const [selectedDate, setSelectedDate] = useState(getFirstSaturday());
+  const [selectedDate, setSelectedDate] = useState(getInitialSaturday());
 
-  // 이미 신청된 날짜들 (나중에 API에서 가져올 예정) - 실제 예약된 날짜만
-  // 예시: 현재 달의 토요일 중 예약된 날짜들
-  const appliedDates = [1, 8, 15, 22, 29]; // 실제로는 API에서 가져올 예정
+  // 이미 신청된 날짜들 (실제 DB에서 가져온 토요일 날짜들)
+  const [appliedDates, setAppliedDates] = useState([]);
 
   // 현재 날짜 포맷팅
   const getCurrentDate = () => {
@@ -49,6 +56,23 @@ function Application({ userInfo }) {
     const day = String(currentDay).padStart(2, '0');
     return `${year}.${month}.${day}`;
   };
+
+  // 오늘이 포함된 주의 토요일 계산 (해당 주만 신청 가능)
+  const getThisWeekSaturday = () => {
+    const todayDayOfWeek = today.getDay(); // 0(일)~6(토)
+    const diffToSaturday = 6 - todayDayOfWeek;
+    const saturdayDateObj = new Date(currentYear, currentMonth - 1, currentDay + diffToSaturday);
+    // 같은 달의 토요일만 유효하게 사용
+    if (
+      saturdayDateObj.getFullYear() === currentYear &&
+      saturdayDateObj.getMonth() + 1 === currentMonth
+    ) {
+      return saturdayDateObj.getDate();
+    }
+    return null;
+  };
+
+  const thisWeekSaturday = getThisWeekSaturday();
 
   // 현재 달 달력 데이터 생성
   const generateCalendar = () => {
@@ -72,6 +96,8 @@ function Application({ userInfo }) {
       const dayOfWeek = date.getDay();
       const isSaturday = dayOfWeek === 6;
       const isSunday = dayOfWeek === 0;
+      const isThisWeekSaturday =
+        isSaturday && thisWeekSaturday !== null && i === thisWeekSaturday;
       // 이미 예약된 날짜만 applied 표시 (토요일이면서 예약된 날짜)
       const isApplied = isSaturday && appliedDates.includes(i);
       calendar.push({ 
@@ -81,7 +107,8 @@ function Application({ userInfo }) {
         isSelected: i === selectedDate,
         isApplied: isApplied,
         isSaturday: isSaturday,
-        isSunday: isSunday
+        isSunday: isSunday,
+        isThisWeekSaturday: isThisWeekSaturday,
       });
     }
     
@@ -102,23 +129,64 @@ function Application({ userInfo }) {
   const calendarWeeks = generateCalendar();
   const weekDays = ['일', '월', '화', '수', '목', '금', '토'];
 
-  // 선택된 날짜가 토요일인지 확인
+  // 선택된 날짜가 "이번 주 토요일"인지 확인
   const isSelectedDateSaturday = () => {
     const date = new Date(currentYear, currentMonth - 1, selectedDate);
-    return date.getDay() === 6;
+    // 토요일이면서, 이번 주 토요일(thisWeekSaturday)과 동일해야 함
+    return date.getDay() === 6 && thisWeekSaturday !== null && selectedDate === thisWeekSaturday;
   };
 
   // 날짜 클릭 핸들러
   const handleDateClick = (dateInfo) => {
     if (!dateInfo.isCurrentMonth) return;
     
-    // 토요일만 선택 가능
-    if (dateInfo.isSaturday) {
-      setSelectedDate(dateInfo.day);
-    } else {
-      alert('외박/잔류 신청은 토요일만 가능합니다.');
+    // 이번 주 토요일만 선택 가능
+    if (!dateInfo.isSaturday || thisWeekSaturday === null || dateInfo.day !== thisWeekSaturday) {
+      alert('외박/잔류 신청은 이번 주 토요일만 가능합니다.');
+      return;
     }
+
+    setSelectedDate(dateInfo.day);
   };
+
+  // 현재 달의 외박/잔류 신청 내역을 불러와 appliedDates로 반영
+  useEffect(() => {
+    const fetchAppliedDates = async () => {
+      try {
+        if (!userInfo?.student_id) return;
+
+        await ensureValidSession();
+
+        // 현재 달의 시작일/마지막일
+        const monthStart = `${currentYear}-${String(currentMonth).padStart(2, '0')}-01`;
+        const monthEnd = `${currentYear}-${String(currentMonth).padStart(2, '0')}-${String(
+          new Date(currentYear, currentMonth, 0).getDate()
+        ).padStart(2, '0')}`;
+
+        const { data, error } = await supabase
+          .from('temporary_leave')
+          .select('date')
+          .eq('student_id', userInfo.student_id)
+          .gte('date', monthStart)
+          .lte('date', monthEnd);
+
+        if (error) {
+          console.error('외박/잔류 신청 내역 불러오기 실패:', error);
+          return;
+        }
+
+        const days = (data || []).map(row => {
+          const d = new Date(row.date);
+          return d.getDate();
+        });
+        setAppliedDates(days);
+      } catch (err) {
+        console.error('외박/잔류 신청 내역 불러오기 중 오류:', err);
+      }
+    };
+
+    fetchAppliedDates();
+  }, [userInfo, currentYear, currentMonth]);
 
   // 저장 버튼 핸들러
   const handleSave = async () => {
@@ -135,6 +203,9 @@ function Application({ userInfo }) {
     }
 
     try {
+      // 세션 확인 및 갱신
+      await ensureValidSession();
+      
       // 날짜 형식 변환 (YYYY-MM-DD)
       const selectedDateObj = new Date(currentYear, currentMonth - 1, selectedDate);
       const dateStr = `${selectedDateObj.getFullYear()}-${String(selectedDateObj.getMonth() + 1).padStart(2, '0')}-${String(selectedDateObj.getDate()).padStart(2, '0')}`;
@@ -143,15 +214,32 @@ function Application({ userInfo }) {
       // enum 값: 'out' (외박), 'return' (잔류)
       const leaveType = selectedSubTab === '외박' ? 'out' : 'return';
 
+      // 이미 해당 날짜에 신청이 있는지 확인 (중복 신청 방지)
+      const { data: existing, error: checkError } = await supabase
+        .from('temporary_leave')
+        .select('id, type, status')
+        .eq('student_id', userInfo.student_id)
+        .eq('date', dateStr);
+
+      if (checkError) {
+        console.error('기존 신청 확인 실패:', checkError);
+        throw checkError;
+      }
+
+      if (existing && existing.length > 0) {
+        alert('이미 해당 날짜에 외박/잔류 신청이 있습니다.');
+        return;
+      }
+
       const insertData = {
         student_id: userInfo.student_id,
         type: leaveType,
         date: dateStr,
         status: 'pending'
       };
-
+      
       console.log('저장 시도:', insertData);
-
+      
       const { data, error } = await supabase
         .from('temporary_leave')
         .insert([insertData])
@@ -277,8 +365,35 @@ function Application({ userInfo }) {
     }
 
     try {
+      // 세션 확인 및 갱신
+      await ensureValidSession();
+
       // 날짜 형식 변환 (YYYY-MM-DD)
       const dateStr = `${outgoingDateObj.getFullYear()}-${String(outgoingDateObj.getMonth() + 1).padStart(2, '0')}-${String(outgoingDateObj.getDate()).padStart(2, '0')}`;
+
+      // 오늘 이전 날짜는 신청 불가
+      const todayStr = `${currentYear}-${String(currentMonth).padStart(2, '0')}-${String(currentDay).padStart(2, '0')}`;
+      if (dateStr < todayStr) {
+        alert('오늘 이전 날짜는 외출 신청할 수 없습니다.');
+        return;
+      }
+
+      // 이미 해당 날짜에 외출 신청이 있는지 확인
+      const { data: existing, error: checkError } = await supabase
+        .from('temporary_exit')
+        .select('id, date, status')
+        .eq('student_id', userInfo.student_id)
+        .eq('date', dateStr);
+
+      if (checkError) {
+        console.error('기존 외출 신청 확인 실패:', checkError);
+        throw checkError;
+      }
+
+      if (existing && existing.length > 0) {
+        alert('이미 해당 날짜에 외출 신청이 있습니다.');
+        return;
+      }
 
       console.log('외출 신청 시도:', {
         student_id: userInfo.student_id,
@@ -388,12 +503,20 @@ function Application({ userInfo }) {
                       const isApplied = dateInfo.isApplied && dateInfo.isCurrentMonth;
                       const isSaturday = dateInfo.isSaturday && dateInfo.isCurrentMonth;
                       const isSunday = dateInfo.isSunday && dateInfo.isCurrentMonth;
+                      const isThisWeekSaturday =
+                        dateInfo.isThisWeekSaturday && dateInfo.isCurrentMonth;
                       const isDisabled = dateInfo.isCurrentMonth && !isSaturday;
                       
                       return (
                         <div
                           key={dayIndex}
-                          className={`calendar-day ${isSelected ? 'selected' : ''} ${isWeekend ? 'weekend' : ''} ${isOtherMonth ? 'other-month' : ''} ${isApplied ? 'applied' : ''} ${isDisabled ? 'disabled' : ''} ${isSunday ? 'sunday' : ''}`}
+                          className={`calendar-day ${isSelected ? 'selected' : ''} ${
+                            isWeekend ? 'weekend' : ''
+                          } ${isOtherMonth ? 'other-month' : ''} ${
+                            isApplied ? 'applied' : ''
+                          } ${isDisabled ? 'disabled' : ''} ${
+                            isSunday ? 'sunday' : ''
+                          } ${isThisWeekSaturday ? 'this-week-saturday' : ''}`}
                           onClick={() => handleDateClick(dateInfo)}
                         >
                           {dateInfo.day}
@@ -479,15 +602,23 @@ function Application({ userInfo }) {
                               const todayStr = `${today.getFullYear()}-${today.getMonth()}-${today.getDate()}`;
                               const isToday = dateInfo.isCurrentMonth && currentDateStr === todayStr;
                               
+                              // 오늘 이전 날짜는 비활성화
+                              const dateStr = `${dateInfo.date.getFullYear()}-${String(dateInfo.date.getMonth() + 1).padStart(2, '0')}-${String(dateInfo.date.getDate()).padStart(2, '0')}`;
+                              const todayDateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+                              const isPast = dateInfo.isCurrentMonth && dateStr < todayDateStr;
+                              
                               return (
                                 <div
                                   key={dayIndex}
-                                  className={`outgoing-calendar-day ${isSelected ? 'selected' : ''} ${isOtherMonth ? 'other-month' : ''} ${isToday ? 'today' : ''}`}
+                                  className={`outgoing-calendar-day ${isSelected ? 'selected' : ''} ${isOtherMonth ? 'other-month' : ''} ${isToday ? 'today' : ''} ${isPast ? 'disabled' : ''}`}
                                   onClick={() => {
-                                    if (dateInfo.isCurrentMonth) {
+                                    if (dateInfo.isCurrentMonth && !isPast) {
                                       handleOutgoingDateSelect(dateInfo.date);
+                                    } else if (isPast) {
+                                      alert('오늘 이전 날짜는 선택할 수 없습니다.');
                                     }
                                   }}
+                                  style={{ cursor: isPast ? 'not-allowed' : 'pointer' }}
                                 >
                                   {dateInfo.day}
                                 </div>

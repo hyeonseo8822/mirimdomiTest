@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import './css/main.css';
-import { supabase } from '../supabaseClient';
+import { supabase, ensureValidSession } from '../supabaseClient';
 import useAuth from '../hooks/useAuth';
+import { getTimetable, getMealMenu } from '../utils/neisApi';
 
 // 로컬 이미지 경로
 const arrowRightIcon = "/img/arrow-right.svg";
@@ -11,7 +12,6 @@ function Main({ userInfo }) {
   console.log('--- Main Component Render ---', { userInfo });
   const navigate = useNavigate();
   const [mealTab, setMealTab] = useState('조식');
-  const [currentDay, setCurrentDay] = useState('화요일');
 
   // 현재 날짜 포맷팅
   const getCurrentDate = () => {
@@ -33,17 +33,17 @@ function Main({ userInfo }) {
   const effectiveUser = userInfo || authUser;
 
   // 날짜 포맷팅 함수 (created_at을 YYYY.MM.DD 형식으로 변환)
-  const formatDate = (dateString) => {
+  const formatDate = useCallback((dateString) => {
     if (!dateString) return '';
     const date = new Date(dateString);
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, '0');
     const day = String(date.getDate()).padStart(2, '0');
     return `${year}.${month}.${day}`;
-  };
+  }, []);
 
   // Supabase 요청에 타임아웃을 적용하는 헬퍼
-  const callWithTimeout = async (fn, ms = 5000) => {
+  const callWithTimeout = useCallback(async (fn, ms = 5000) => {
     let timer;
     const timeout = new Promise((_, reject) => {
       timer = setTimeout(() => reject(new Error('Supabase request timeout')), ms);
@@ -54,55 +54,91 @@ function Main({ userInfo }) {
     } finally {
       clearTimeout(timer);
     }
-  };
+  }, []);
+  // SDK가 동작하지 않을 때를 대비한 REST 폴백 헬퍼
+  const fallbackRest = useCallback(async (table, queryString = '', extraHeaders = {}) => {
+    try {
+      const base = (process.env.REACT_APP_SUPABASE_URL || '').replace(/\/$/, '');
+      const anon = process.env.REACT_APP_SUPABASE_ANON_KEY;
+      if (!base || !anon) throw new Error('REST fallback: supabase URL or anon key missing');
+      const url = `${base}/rest/v1/${table}${queryString ? '?' + queryString : ''}`;
+      console.log('[DEBUG] Main.js: fallbackRest 호출', { url });
+
+      const headers = Object.assign({
+        apikey: anon,
+        // default Authorization to anon (keeps previous behavior), but allow override via extraHeaders
+        Authorization: `Bearer ${anon}`,
+      }, extraHeaders || {});
+
+      const res = await fetch(url, {
+        headers,
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`REST fallback request failed: ${res.status} ${text}`);
+      }
+      const data = await res.json();
+      return data;
+    } catch (e) {
+      console.error('[DEBUG] Main.js: fallbackRest 오류', e);
+      return null;
+    }
+  }, []);
+
+  // Supabase 호출과 REST 폴백을 병렬로 시작해서 빠른 쪽 결과를 사용하는 헬퍼
+  // supabaseFn: () => Promise<{ data, error }>
+  // table, queryString: REST 폴백 파라미터
+  const fetchPreferFast = useCallback(async (supabaseFn, table, queryString = '', supTimeout = 2500) => {
+    const supPromise = (async () => {
+      try {
+        const res = await callWithTimeout(supabaseFn, supTimeout);
+        return { source: 'supabase', data: res?.data, error: res?.error };
+      } catch (e) {
+        return { source: 'supabase', error: e };
+      }
+    })();
+
+    const fbPromise = (async () => {
+      try {
+        const data = await fallbackRest(table, queryString);
+        return { source: 'fallback', data };
+      } catch (e) {
+        return { source: 'fallback', error: e };
+      }
+    })();
+
+    // 먼저 도착하는 응답을 선택. 도착한 결과에 데이터가 없으면 다른 쪽을 기다려본다.
+    const first = await Promise.race([supPromise, fbPromise]);
+    if (first && first.data && (!first.error)) return first;
+    // first가 오류거나 데이터가 없다면 다른 쪽 결과를 기다림
+    const other = (first && first.source === 'supabase') ? await fbPromise : await supPromise;
+    return other && other.data ? other : first;
+  }, [callWithTimeout, fallbackRest]);
 
   // 공지사항 데이터 가져오기
-  const fetchNotices = async () => {
+  const fetchNotices = useCallback(async () => {
     console.log('[DEBUG] Main.js: fetchNotices - 실행');
     setNoticesLoading(true);
     try {
-      console.log('[DEBUG] Main.js: fetchNotices - Supabase "notice" 테이블 조회 시작');
-      const res = await callWithTimeout(() => supabase
+      console.log('[DEBUG] Main.js: fetchNotices - Supabase "notice" 테이블 조회 시작 (병렬 우선 방식)');
+      const best = await fetchPreferFast(() => supabase
         .from('notice')
         .select('id, title, created_at')
         .order('created_at', { ascending: false })
-        .limit(4), 7000); // 최신 4개만 가져오기
-      let { data, error } = res || {};
-      console.log('[DEBUG] Main.js: fetchNotices - Supabase "notice" 테이블 조회 완료', { data, error });
-      console.log('[DEBUG] Main.js: fetchNotices - Supabase "notice" 테이블 조회 완료', { data, error });
+        .limit(4), 'notice', 'select=id,title,created_at&order=created_at.desc&limit=4', 3000);
 
-      // 에러가 있고 테이블을 찾을 수 없다면 'notices' 시도
-      if (error && (error.message?.includes('relation') || error.message?.includes('does not exist'))) {
-        console.log('[DEBUG] Main.js: fetchNotices - "notice" 테이블 없음, "notices"로 재시도');
-        const result = await callWithTimeout(() => supabase
+      let data = best?.data;
+      const source = best?.source;
+      console.log('[DEBUG] Main.js: fetchNotices - 선택된 소스', { source, length: (data && data.length) || 0 });
+      // 만약 supabase에서 테이블명이 다르면 'notices'로 재시도 (supabase 호출 우선 시도했을 경우)
+      if ((!data || data.length === 0) && source === 'supabase') {
+        const alt = await fetchPreferFast(() => supabase
           .from('notices')
           .select('id, title, created_at')
           .order('created_at', { ascending: false })
-          .limit(4), 7000);
-        data = result?.data;
-        error = result?.error;
-        console.log('[DEBUG] Main.js: fetchNotices - "notices" 테이블 조회 완료', { data, error });
-      }
-
-      if (error) {
-        // 인증 오류인 경우
-        if (error.code === 'PGRST301' || error.message?.includes('JWT') || error.message?.includes('auth') || error.message?.includes('permission')) {
-          console.error('[DEBUG] Main.js: fetchNotices - 인증 오류:', error);
-          setNotices([]);
-          setNoticesLoading(false);
-          return;
-        }
-        console.error('[DEBUG] Main.js: fetchNotices - Supabase 오류:', error);
-        setNotices([]);
-        setNoticesLoading(false);
-        return;
-      }
-
-      if (!data) {
-        console.log('[DEBUG] Main.js: fetchNotices - 데이터 없음');
-        setNotices([]);
-        setNoticesLoading(false);
-        return;
+          .limit(4), 'notices', 'select=id,title,created_at&order=created_at.desc&limit=4', 3000);
+        data = alt?.data;
+        console.log('[DEBUG] Main.js: fetchNotices - 대체 소스 조회 완료', { altSource: alt?.source, length: (data && data.length) || 0 });
       }
 
       // 데이터 포맷 변환
@@ -122,12 +158,35 @@ function Main({ userInfo }) {
       console.log('[DEBUG] Main.js: fetchNotices - 성공');
     } catch (error) {
       console.error('[DEBUG] Main.js: fetchNotices - 전체 try-catch 오류:', error);
-      setNotices([]);
+      // SDK 호출이 타임아웃되거나 실패하면 REST 폴백 시도
+      try {
+        console.log('[DEBUG] Main.js: fetchNotices - supabase-js 실패, REST 폴백 시도');
+        const fallbackData = await fallbackRest('notice', 'select=id,title,created_at&order=created_at.desc&limit=4');
+        let finalData = fallbackData;
+        if ((!finalData || finalData.length === 0)) {
+          // 'notice' 테이블이 없을 수 있으므로 'notices'로도 시도
+          const alt = await fallbackRest('notices', 'select=id,title,created_at&order=created_at.desc&limit=4');
+          if (alt && alt.length > 0) finalData = alt;
+        }
+        if (finalData && finalData.length > 0) {
+          const formattedNotices = finalData.map(notice => ({
+            id: notice.id,
+            title: notice.title || '(제목 없음)',
+            date: formatDate(notice.created_at),
+          }));
+          setNotices(formattedNotices);
+        } else {
+          setNotices([]);
+        }
+      } catch (e) {
+        console.error('[DEBUG] Main.js: fetchNotices - REST 폴백도 실패', e);
+        setNotices([]);
+      }
     } finally {
       console.log('[DEBUG] Main.js: fetchNotices - finally 블록 실행, 로딩 해제');
       setNoticesLoading(false);
     }
-  };
+  }, [callWithTimeout, fallbackRest, formatDate]);
 
   // 공지사항 가져오기 (authReady가 완료되고 userInfo가 준비된 후)
   useEffect(() => {
@@ -136,7 +195,7 @@ function Main({ userInfo }) {
     if (effectiveUser?.id && !noticesFetchedRef.current) {
       fetchNotices();
     }
-  }, [authReady, effectiveUser?.id]); // authReady + effectiveUser.id가 변경될 때만
+  }, [authReady, effectiveUser?.id, fetchNotices]); // authReady + effectiveUser.id가 변경될 때만
 
   // 알람 데이터
   const [alarms, setAlarms] = useState([]);
@@ -144,7 +203,7 @@ function Main({ userInfo }) {
   const alarmsFetchedRef = useRef(false);
 
   // 상대 시간 계산 함수 (예: '방금', '5분 전', '1시간 전' 등)
-  const getRelativeTime = (createdAt) => {
+  const getRelativeTime = useCallback((createdAt) => {
     if (!createdAt) return '방금';
     
     const now = new Date();
@@ -159,88 +218,85 @@ function Main({ userInfo }) {
     if (diffHours < 24) return `${diffHours}시간 전`;
     if (diffDays < 7) return `${diffDays}일 전`;
     return formatDate(createdAt);
-  };
+  }, [formatDate]);
 
   // 알람 데이터 가져오기
-  const fetchAlarms = async () => {
-    console.log('[DEBUG] Main.js: fetchAlarms - 실행');
-    setAlarmsLoading(true);
-    try {
-      if (!effectiveUser?.id) {
-        console.log('[DEBUG] Main.js: fetchAlarms - effectiveUser 없음, 종료');
-        setAlarms([]);
-        setAlarmsLoading(false); // 로딩 상태를 false로 설정
-        return;
-      }
-
-      const userIdString = String(effectiveUser.id);
-      console.log(`[DEBUG] Main.js: fetchAlarms - Supabase "alarm" 테이블 조회 시작 (user_id: ${userIdString})`);
-
-      const res = await callWithTimeout(() => supabase
-        .from('alarm')
-        .select('*')
-        .eq('user_id', userIdString)
-        .order('created_at', { ascending: false })
-        .limit(4), 7000); // 최신 4개만 가져오기
-      const { data, error } = res || {};
-      console.log('[DEBUG] Main.js: fetchAlarms - Supabase "alarm" 테이블 조회 완료', { data, error });
-
-      if (error) {
-        // 인증 오류인 경우
-        if (error.code === 'PGRST301' || error.message?.includes('JWT') || error.message?.includes('auth') || error.message?.includes('permission')) {
-          console.error('[DEBUG] Main.js: fetchAlarms - 인증 오류:', error);
-          setAlarms([]);
-          setAlarmsLoading(false);
-          return;
-        }
-        console.error('[DEBUG] Main.js: fetchAlarms - Supabase 오류:', error);
-        setAlarms([]);
-        setAlarmsLoading(false);
-        return;
-      }
-
-      // 데이터 포맷 변환
-      const formattedAlarms = (data || []).map(alarm => ({
-        id: alarm.id,
-        type: alarm.type || '알림',
-        message: alarm.message || '',
-        time: alarm.time || getRelativeTime(alarm.created_at),
-        detail: alarm.detail || '',
-        created_at: alarm.created_at,
-        is_read: alarm.is_read || false,
-      }));
-
-      setAlarms(formattedAlarms);
-      alarmsFetchedRef.current = true;
-      console.log('[DEBUG] Main.js: fetchAlarms - 성공');
-    } catch (error) {
-      console.error('[DEBUG] Main.js: fetchAlarms - 전체 try-catch 오류:', error);
-      setAlarms([]);
-    } finally {
-      console.log('[DEBUG] Main.js: fetchAlarms - finally 블록 실행, 로딩 해제');
-      setAlarmsLoading(false);
-    }
-  };
-
-  // 알람 가져오기 및 실시간 구독 (authReady 완료 및 userInfo 준비된 후)
-  useEffect(() => {
-    console.log('[DEBUG] Main.js: useEffect (Alarms) - 실행', { authReady, effectiveUserExists: !!effectiveUser?.id, fetched: alarmsFetchedRef.current });
-    if (!authReady) return; // 인증 초기화 전에는 실행하지 않음
+  const fetchAlarms = useCallback(async () => {
     if (!effectiveUser?.id) {
-      // userInfo가 아직 준비되지 않았으면 빈 배열로 설정하고 로딩 해제
-      console.log('[DEBUG] Main.js: useEffect (Alarms) - effectiveUser 없음, 로딩 해제');
+      console.log('[DEBUG] Main.js: fetchAlarms - effectiveUser.id 없음, 종료');
       setAlarms([]);
       setAlarmsLoading(false);
       return;
     }
 
-    // 이미 가져왔으면 다시 가져오지 않음 (실시간 구독은 계속)
-    if (!alarmsFetchedRef.current) {
+    console.log('[DEBUG] Main.js: fetchAlarms - 실행');
+    setAlarmsLoading(true);
+    
+    // user_id를 문자열로 변환 (alarm 테이블의 user_id는 text 타입)
+    const userIdString = String(effectiveUser.id).trim();
+    
+    console.log(`[DEBUG] Main.js: fetchAlarms - 사용자 ID: ${userIdString} (타입: ${typeof userIdString})`);
+
+    try {
+      // 세션 확인 및 갱신
+      await ensureValidSession();
+
+      // 알람 데이터 조회
+      console.log(`[DEBUG] Main.js: fetchAlarms - Supabase "alarm" 테이블 조회 시작 (user_id: ${userIdString})`);
+      const { data, error } = await supabase
+        .from('alarm')
+        .select('*')
+        .eq('user_id', userIdString)
+        .order('created_at', { ascending: false })
+        .limit(4);
+
+      if (error) {
+        console.error('[DEBUG] Main.js: fetchAlarms - Supabase 오류:', error);
+        throw error;
+      }
+      
+      console.log(`[DEBUG] Main.js: fetchAlarms - 조회 결과: ${data?.length || 0}개 알람`);
+      
+      const formattedAlarms = (data || []).map(alarm => ({
+        id: alarm.id,
+        type: alarm.type || '알림',
+        message: alarm.message || '',
+        time: alarm.created_at ? new Date(alarm.created_at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false }) : getRelativeTime(alarm.created_at),
+        detail: alarm.detail || '',
+        created_at: alarm.created_at,
+        is_read: alarm.is_read || false,
+      }));
+
+      if (formattedAlarms.length === 0) {
+        console.log('[DEBUG] Main.js: fetchAlarms - 결과가 비어있습니다.');
+      }
+
+      setAlarms(formattedAlarms);
+      alarmsFetchedRef.current = true;
+
+    } catch (error) {
+      console.error('[DEBUG] Main.js: fetchAlarms - 오류:', error);
+      setAlarms([]);
+    } finally {
+      console.log('[DEBUG] Main.js: fetchAlarms - finally 블록 실행, 로딩 해제');
+      setAlarmsLoading(false);
+    }
+  }, [effectiveUser?.id, getRelativeTime]);
+
+    
+
+  // 알람 가져오기 및 실시간 구독 (authReady 완료 및 userInfo 준비된 후)
+  useEffect(() => {
+    console.log('[DEBUG] Main.js: useEffect (Alarms) - 실행', { authReady, effectiveUserExists: !!effectiveUser?.id, fetched: alarmsFetchedRef.current });
+    if (!authReady) return; 
+    
+    if (effectiveUser?.id && !alarmsFetchedRef.current) {
       fetchAlarms();
     }
 
-    // Supabase Realtime 구독
-    const userIdString = String(effectiveUser.id);
+    if (!effectiveUser?.id) return;
+
+    const userIdString = String(effectiveUser.id).trim();
     
     const subscription = supabase
       .channel('alarm_changes')
@@ -254,7 +310,7 @@ function Main({ userInfo }) {
         },
         (payload) => {
           console.log('[DEBUG] Main.js: Realtime (alarm) - 변경 감지', payload);
-          fetchAlarms(); // 변경 시 다시 가져오기
+          fetchAlarms();
         }
       )
       .subscribe();
@@ -264,7 +320,7 @@ function Main({ userInfo }) {
       console.log('[DEBUG] Main.js: Realtime (alarm) - 구독 해제');
       try { subscription.unsubscribe(); } catch (e) {}
     };
-  }, [authReady, effectiveUser?.id]); // authReady + effectiveUser.id가 변경될 때만
+  }, [authReady, effectiveUser?.id, fetchAlarms]);
 
   // 커뮤니티 데이터
   const [communityPosts, setCommunityPosts] = useState([]);
@@ -272,32 +328,18 @@ function Main({ userInfo }) {
   const communityFetchedRef = useRef(false);
 
   // 커뮤니티 게시글 가져오기
-  const fetchCommunityPosts = async () => {
+  const fetchCommunityPosts = useCallback(async () => {
     console.log('[DEBUG] Main.js: fetchCommunityPosts - 실행');
     setCommunityLoading(true);
     try {
-      console.log('[DEBUG] Main.js: fetchCommunityPosts - Supabase "posts" 테이블 조회 시작');
-      const res = await callWithTimeout(() => supabase
+      console.log('[DEBUG] Main.js: fetchCommunityPosts - Supabase "posts" 테이블 조회 시작 (병렬 우선 방식)');
+      const best = await fetchPreferFast(() => supabase
         .from('posts')
         .select('id, title, category, created_at')
         .order('created_at', { ascending: false })
-        .limit(4), 7000); // 최신 4개만 가져오기
-      const { data, error } = res || {};
-      console.log('[DEBUG] Main.js: fetchCommunityPosts - Supabase "posts" 테이블 조회 완료', { data, error });
-
-      if (error) {
-        // 인증 오류인 경우
-        if (error.code === 'PGRST301' || error.message?.includes('JWT') || error.message?.includes('auth') || error.message?.includes('permission')) {
-          console.error('[DEBUG] Main.js: fetchCommunityPosts - 인증 오류:', error);
-          setCommunityPosts([]);
-          setCommunityLoading(false);
-          return;
-        }
-        console.error('[DEBUG] Main.js: fetchCommunityPosts - Supabase 오류:', error);
-        setCommunityPosts([]);
-        setCommunityLoading(false);
-        return;
-      }
+        .limit(4), 'posts', 'select=id,title,category,created_at&order=created_at.desc&limit=4', 3000);
+      const data = best?.data || [];
+      console.log('[DEBUG] Main.js: fetchCommunityPosts - 선택된 소스', { source: best?.source, length: (data && data.length) || 0 });
 
       // 데이터 포맷 변환 (main.js에서 사용하는 형식으로)
       const formattedPosts = (data || []).map(post => ({
@@ -315,12 +357,34 @@ function Main({ userInfo }) {
       console.log('[DEBUG] Main.js: fetchCommunityPosts - 성공');
     } catch (error) {
       console.error('[DEBUG] Main.js: fetchCommunityPosts - 전체 try-catch 오류:', error);
-      setCommunityPosts([]);
+      // SDK 실패 시 REST 폴백
+      try {
+        console.log('[DEBUG] Main.js: fetchCommunityPosts - supabase-js 실패, REST 폴백 시도');
+        const finalData = await fallbackRest('posts', 'select=id,title,category,created_at&order=created_at.desc&limit=4');
+        if (finalData && finalData.length > 0) {
+          const formattedPosts = (finalData || []).map(post => ({
+            id: post.id,
+            category: post.category === '분실물 게시판' ? '분실' : '자유',
+            title: post.title,
+            time: new Date(post.created_at).toLocaleTimeString('ko-KR', {
+              hour: '2-digit',
+              minute: '2-digit',
+              hour12: false,
+            }),
+          }));
+          setCommunityPosts(formattedPosts);
+        } else {
+          setCommunityPosts([]);
+        }
+      } catch (e) {
+        console.error('[DEBUG] Main.js: fetchCommunityPosts - REST 폴백도 실패', e);
+        setCommunityPosts([]);
+      }
     } finally {
       console.log('[DEBUG] Main.js: fetchCommunityPosts - finally 블록 실행, 로딩 해제');
       setCommunityLoading(false);
     }
-  };
+  }, [callWithTimeout, fallbackRest]);
 
   // 커뮤니티 게시글 가져오기 (userInfo가 준비된 후)
   useEffect(() => {
@@ -329,7 +393,7 @@ function Main({ userInfo }) {
     if (effectiveUser?.id && !communityFetchedRef.current) {
       fetchCommunityPosts();
     }
-  }, [authReady, effectiveUser?.id]); // authReady + effectiveUser.id가 변경될 때만
+  }, [authReady, effectiveUser?.id, fetchCommunityPosts]); // authReady + effectiveUser.id가 변경될 때만
 
   // 시간표 데이터
   const [timetable, setTimetable] = useState([]);
@@ -350,120 +414,16 @@ function Main({ userInfo }) {
   // 요일 이름 배열
   const weekDays = ['일요일', '월요일', '화요일', '수요일', '목요일', '금요일', '토요일'];
   
-  // 현재 요일 인덱스 계산
-  const getCurrentDayIndex = () => {
-    const dayName = currentDay;
-    return weekDays.indexOf(dayName);
-  };
+  // 현재 요일은 `new Date().getDay()`로 바로 사용합니다.
 
-  // NEIS API 직접 호출 (시간표)
-  // NEIS 시간표 API 호출 (필수: KEY 필요)
-const fetchTimetable = async (grade, classNum, date) => {
-  if (!grade || !classNum) {
-    setTimetableError(null);
-    setTimetable(getDummyTimetable(grade, classNum));
-    setTimetableLoading(false);
-    return;
-  }
+  
 
-  // 이미 호출 중이면 중복 호출 방지
-  if (timetableLoading) return;
+  
 
-  setTimetableLoading(true);
-  setTimetableError(null);
-
-  try {
-    // 날짜 : YYYYMMDD
-    const dateStr = date.replace(/\./g, '').replace(/\s/g, '');
-
-    const apiKey = process.env.REACT_APP_NEIS_API_KEY || 'f5d5771e4c464ba287816eb498ff3999';
-    
-    if (!apiKey) {
-      console.error('NEIS API 키가 설정되지 않았습니다.');
-      setTimetableError('API 키가 설정되지 않았습니다.');
-      setTimetable(getDummyTimetable(grade, classNum));
-      setTimetableLoading(false);
-      return;
-    }
-
-    const params = new URLSearchParams({
-      KEY: apiKey,
-      Type: 'json',
-      pIndex: '1',
-      pSize: '100',
-      ATPT_OFCDC_SC_CODE: 'B10',     // 서울시교육청
-      SD_SCHUL_CODE: '7011569',      // 미림마이스터고
-      GRADE: grade,
-      CLASS_NM: classNum,
-      ALL_TI_YMD: dateStr,           // 하루만 조회
-    });
-
-    const url = `https://open.neis.go.kr/hub/hisTimetable?${params.toString()}`;
-
-    const response = await fetch(url);
-
-    if (!response.ok) {
-      throw new Error(`API 요청 실패: ${response.status}`);
-    }
-
-    const data = await response.json();
-
-    // API 오류 체크
-    if (data.RESULT && data.RESULT.CODE && data.RESULT.CODE !== 'INFO-000') {
-      console.warn('NEIS API 오류:', data.RESULT.MESSAGE || data.RESULT.CODE);
-      // API 오류가 있어도 더미 데이터로 표시
-      setTimetable(getDummyTimetable(grade, classNum));
-      setTimetableError(null); // 에러 메시지 숨김
-      return;
-    }
-
-    // 시간표 데이터 확인
-    if (!data.hisTimetable || !data.hisTimetable[1] || !data.hisTimetable[1].row) {
-      setTimetable(getDummyTimetable(grade, classNum));
-      setTimetableError(null); // 에러 메시지 숨김
-      return;
-    }
-
-    const rows = data.hisTimetable[1].row;
-
-    if (!rows || rows.length === 0) {
-      setTimetable(getDummyTimetable(grade, classNum));
-      setTimetableError(null); // 에러 메시지 숨김
-      return;
-    }
-
-    // 정렬 + 표시 형식 통일
-    const result = rows
-      .filter(item => item.PERIO && (item.ITRT_CNTNT || item.SUBJECT_NM)) // 유효한 데이터만
-      .sort((a, b) => parseInt(a.PERIO) - parseInt(b.PERIO))
-      .map(item => ({
-        period: `${item.PERIO}교시`,
-        subject: item.ITRT_CNTNT || item.SUBJECT_NM || "수업 정보 없음",
-      }));
-
-    if (result.length > 0) {
-      setTimetable(result);
-      setTimetableError(null);
-    } else {
-      setTimetable(getDummyTimetable(grade, classNum));
-      setTimetableError(null);
-    }
-
-    timetableFetchedRef.current = true;
-  } catch (error) {
-    console.error("시간표 조회 오류:", error);
-    // 에러 발생 시에도 더미 데이터로 표시하고 에러 메시지 숨김
-    setTimetable(getDummyTimetable(grade, classNum));
-    setTimetableError(null);
-  } finally {
-    setTimetableLoading(false);
-  }
-};
-
+  
 
   // 더미 시간표 데이터 (백엔드 서버 없이 사용)
-  const getDummyTimetable = (grade, classNum) => {
-    // 학년/반별 기본 시간표 (실제 시간표로 교체 가능)
+  const getDummyTimetable = useCallback((grade, classNum) => {
     const defaultTimetable = [
       { period: '1교시', subject: '수학' },
       { period: '2교시', subject: '영어' },
@@ -473,12 +433,47 @@ const fetchTimetable = async (grade, classNum, date) => {
       { period: '6교시', subject: 'UIUX엔지니어링' },
       { period: '7교시', subject: '시각디자인' },
     ];
-    
-    // 여기서 학년/반별로 다른 시간표를 반환할 수 있습니다
-    // 예: if (grade === 2 && classNum === 2) { return [...]; }
-    
     return defaultTimetable;
-  };
+  }, []);
+
+  // 시간표 조회 (neisApi.js 통합)
+  const fetchTimetable = useCallback(async (grade, classNum, date) => {
+    if (!grade || !classNum) {
+      setTimetableError(null);
+      setTimetable(getDummyTimetable(grade, classNum));
+      setTimetableLoading(false);
+      return;
+    }
+
+    // 이미 호출 중이면 중복 호출 방지
+    if (timetableLoading) return;
+
+    setTimetableLoading(true);
+    setTimetableError(null);
+
+    try {
+      const result = await getTimetable(grade, classNum, date);
+
+      if (result.length > 0) {
+        setTimetable(result);
+        setTimetableError(null);
+      } else {
+        setTimetable(getDummyTimetable(grade, classNum));
+        setTimetableError(null);
+      }
+
+      timetableFetchedRef.current = true;
+    } catch (error) {
+      console.error("시간표 조회 오류:", error);
+      setTimetable(getDummyTimetable(grade, classNum));
+      setTimetableError(null);
+    } finally {
+      setTimetableLoading(false);
+    }
+  }, [getDummyTimetable, timetableLoading]);
+
+
+  
 
   // userInfo.student_id가 변경되면 오늘 날짜의 시간표만 불러오기
   useEffect(() => {
@@ -494,7 +489,7 @@ const fetchTimetable = async (grade, classNum, date) => {
         fetchTimetable(grade, classNum, dateStr);
       }
     }
-  }, [effectiveUser?.student_id]); // student_id가 변경될 때만
+  }, [effectiveUser?.student_id, fetchTimetable]); // student_id가 변경될 때만
 
   // 급식 메뉴 데이터
   const [mealMenus, setMealMenus] = useState({
@@ -506,33 +501,17 @@ const fetchTimetable = async (grade, classNum, date) => {
   const [mealError, setMealError] = useState(null);
   const mealFetchedRef = useRef(false);
 
-  // NEIS API 직접 호출 (급식) - 사용자 제공 형식
-  const getMealInfo = async (dateData) => {
-    const API_KEY = process.env.REACT_APP_NEIS_API_KEY || 'f5d5771e4c464ba287816eb498ff3999';
-    
-    if (!API_KEY) {
-      console.error('NEIS API 키가 설정되지 않았습니다.');
-      setMealError('API 키가 설정되지 않았습니다.');
-      return;
-    }
 
-    const URL = "https://open.neis.go.kr/hub/mealServiceDietInfo";
-    const ATPT_OFCDC_SC_CODE = "B10";   // 서울 특별시 교육청
-    const SD_SCHUL_CODE = "7011569";
-    const TYPE = "json";
+  const getDummyMealMenu = useCallback(() => {
+    // 실제 급식 메뉴로 교체 가능
+    return {
+      조식: ['쌀밥', '시금치두부무침', '계란말이', '된장찌개', '춘천닭갈비'],
+      중식: ['쌀밥', '김치찌개', '불고기', '나물무침', '배추김치'],
+      석식: ['쌀밥', '미역국', '닭볶음탕', '콩나물무침', '깍두기'],
+    };
+  }, []);
 
-    const api_url = `https://open.neis.go.kr/hub/mealServiceDietInfo?ATPT_OFCDC_SC_CODE=${ATPT_OFCDC_SC_CODE}&SD_SCHUL_CODE=${SD_SCHUL_CODE}&KEY=${API_KEY}&MLSV_YMD=${dateData}&Type=${TYPE}`;
-
-    const response = await fetch(api_url, {
-      method: 'GET'
-    });
-
-    const data = await response.json();
-
-    return data;
-  };
-
-  const fetchMealMenu = async (input = new Date()) => {
+  const fetchMealMenu = useCallback(async (input = new Date()) => {
     // 이미 호출 중이면 중복 호출 방지
     if (mealLoading) return;
     
@@ -540,60 +519,14 @@ const fetchTimetable = async (grade, classNum, date) => {
     setMealError(null);
 
     try {
-      // Date 객체를 YYYYMMDD 형식으로 변환
+      // 날짜를 YYYY.MM.DD 형식으로 변환
       const now = new Date(input);
       const year = now.getFullYear();
-      const month = now.getMonth() + 1;
-      const date = now.getDate();
-      const dateData = `${year}${month >= 10 ? month : '0' + month}${date >= 10 ? date : '0' + date}`;
+      const month = String(now.getMonth() + 1).padStart(2, '0');
+      const day = String(now.getDate()).padStart(2, '0');
+      const dateStr = `${year}.${month}.${day}`;
 
-      const data = await getMealInfo(dateData);
-
-      // 에러 체크
-      if (data.RESULT && data.RESULT.CODE && data.RESULT.CODE !== 'INFO-000') {
-        const dummyMeals = getDummyMealMenu();
-        setMealMenus(dummyMeals);
-        setMealError(null);
-        return;
-      }
-
-      if (!data.mealServiceDietInfo) {
-        const dummyMeals = getDummyMealMenu();
-        setMealMenus(dummyMeals);
-        setMealError(null);
-        return;
-      }
-
-      // 급식 데이터 추출
-      const mealInfoArray = data.mealServiceDietInfo[1]?.row || [];
-      const meals = {
-        조식: [],
-        중식: [],
-        석식: [],
-      };
-
-      mealInfoArray.forEach(element => {
-        const mealType = element.MMEAL_SC_NM; // 조식, 중식, 석식
-        const dishName = element.DDISH_NM; // 메뉴 문자열
-        
-        if (dishName) {
-          // 메뉴 파싱 (HTML 태그 제거 및 분리)
-          const menuList = dishName
-            .replace(/<br\/?>/gi, '\n')
-            .replace(/<\/?[^>]+(>|$)/g, '')
-            .split('\n')
-            .map(menu => menu.trim())
-            .filter(menu => menu.length > 0 && !menu.match(/^\d+\./)); // 번호 제거
-          
-          if (mealType === '조식' || mealType?.includes('조식')) {
-            meals.조식 = menuList;
-          } else if (mealType === '중식' || mealType?.includes('중식')) {
-            meals.중식 = menuList;
-          } else if (mealType === '석식' || mealType?.includes('석식')) {
-            meals.석식 = menuList;
-          }
-        }
-      });
+      const meals = await getMealMenu(dateStr);
 
       // 데이터가 있으면 설정, 없으면 더미 데이터
       if (meals.조식.length > 0 || meals.중식.length > 0 || meals.석식.length > 0) {
@@ -615,24 +548,16 @@ const fetchTimetable = async (grade, classNum, date) => {
     } finally {
       setMealLoading(false);
     }
-  };
+  }, [getDummyMealMenu, mealLoading]);
 
-  // 더미 급식 메뉴 데이터 (백엔드 서버 없이 사용)
-  const getDummyMealMenu = () => {
-    // 실제 급식 메뉴로 교체 가능
-    return {
-      조식: ['쌀밥', '시금치두부무침', '계란말이', '된장찌개', '춘천닭갈비'],
-      중식: ['쌀밥', '김치찌개', '불고기', '나물무침', '배추김치'],
-      석식: ['쌀밥', '미역국', '닭볶음탕', '콩나물무침', '깍두기'],
-    };
-  };
+  
 
   // 컴포넌트 마운트 시 급식 메뉴 불러오기 (한 번만)
   useEffect(() => {
     if (!mealFetchedRef.current) {
       fetchMealMenu(new Date());
     }
-  }, []);
+  }, [fetchMealMenu]);
 
   return (
     <div className="home">
